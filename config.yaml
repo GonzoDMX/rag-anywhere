@@ -1,0 +1,31 @@
+# config.yaml
+embedding:
+  provider: embeddinggemma  # embeddinggemma, openai, cohere, voyage
+  
+  # Local EmbeddingGemma settings
+  model: google/embeddinggemma-300m
+  device: auto  # auto, cpu, cuda, mps
+  batch_size: 32
+  
+  # Remote provider settings (only needed if provider != embeddinggemma)
+  # api_key: ${OPENAI_API_KEY}  # Use environment variable
+  # model: text-embedding-3-small  # for OpenAI
+
+vector_store:
+  dimension: 768  # FIXED - do not change
+  metric: cosine
+  persist_to_sqlite: true
+
+splitter:
+  strategy: recursive  # recursive, structural
+  
+  # Optimized for 2048 token models (~4 chars per token)
+  chunk_size: 6000        # ~1500 tokens (safety margin)
+  chunk_overlap: 600      # ~150 tokens
+  
+  # For structural splitter
+  min_chunk_size: 1000
+  max_chunk_size: 6000
+
+database:
+  path: ~/.rag-anywhere/rag.db

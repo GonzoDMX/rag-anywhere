@@ -1,0 +1,12 @@
+# requirements-optional.txt
+# Optional dependencies for enhanced functionality
+
+# For API server
+fastapi>=0.104.0
+uvicorn>=0.24.0
+
+# For OpenAI embeddings
+openai>=1.0.0
+
+# For GPU support (alternative to faiss-cpu)
+# faiss-gpu>=1.7.4

@@ -1,0 +1,15 @@
+# requirements-dev.txt
+# Include base requirements
+-r requirements.txt
+
+# Development dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.7.0
+
+# Optional dependencies for testing
+fastapi>=0.104.0
+uvicorn>=0.24.0
+openai>=1.0.0
