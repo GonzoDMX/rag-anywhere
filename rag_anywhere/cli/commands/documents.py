@@ -6,8 +6,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from pathlib import Path
 from typing import Optional, List
 import json
+import requests
 
 from ..context import RAGContext
+from ...server.manager import ServerManager
 from ...core.splitters import SplitterFactory
 
 app = typer.Typer()
@@ -60,6 +62,7 @@ def add(
 ):
     """Add document(s) to the active database"""
     rag_ctx = RAGContext()
+    manager = ServerManager(rag_ctx.config)
     
     try:
         rag_ctx.ensure_active_database()
@@ -67,13 +70,17 @@ def add(
         console.print(f"[red]✗[/red] {e}", style="bold")
         raise typer.Exit(1)
     
-    # Load active database
-    db_name = rag_ctx.get_active_database_name()
+    # Ensure server is running
     try:
-        rag_ctx.load_database(db_name, verbose=False)
+        manager.ensure_server_running()
     except Exception as e:
-        console.print(f"[red]✗[/red] Error loading database: {e}", style="bold")
+        console.print(f"[red]✗[/red] {e}", style="bold")
+        console.print("\nTry starting the server: rag-anywhere server start")
         raise typer.Exit(1)
+    
+    # Get server port
+    status = manager.get_status()
+    port = status['port']
     
     # Parse metadata
     parsed_metadata = None
@@ -88,12 +95,16 @@ def add(
     splitter_overrides = _parse_splitter_overrides(splitter, ctx)
     
     # Collect files to add
+    # Get supported extensions from registry (need to create one temporarily)
+    from ...core.loaders import LoaderRegistry
+    temp_registry = LoaderRegistry()
+    supported_exts = set(temp_registry.get_supported_extensions())
+    
     files_to_add = []
     for path in paths:
         if path.is_file():
             files_to_add.append(path)
         elif path.is_dir():
-            supported_exts = set(rag_ctx.loader_registry.get_supported_extensions())
             if recursive:
                 files = [
                     f for f in path.rglob('*')
@@ -125,32 +136,33 @@ def add(
         
         for file_path in files_to_add:
             try:
-                # Get splitter config for this file type
-                file_ext = file_path.suffix.lower()
-                splitter_config = rag_ctx.get_splitter_config(file_ext, splitter_overrides)
-                
-                # Create indexer with appropriate splitter
-                splitter = SplitterFactory.create_splitter(
-                    splitter_config['strategy'],
-                    token_estimator=rag_ctx.embedding_provider.estimate_tokens,
-                    **{k: v for k, v in splitter_config.items() if k != 'strategy'}
+                # Make API request to server
+                response = requests.post(
+                    f"http://127.0.0.1:{port}/documents/add",
+                    json={
+                        'file_path': str(file_path.absolute()),
+                        'metadata': parsed_metadata,
+                        'splitter_overrides': splitter_overrides
+                    },
+                    timeout=300  # 5 minutes for large documents
                 )
                 
-                # Temporarily replace the indexer's splitter
-                original_splitter = rag_ctx.indexer.splitter
-                rag_ctx.indexer.splitter = splitter
+                if response.status_code == 200:
+                    data = response.json()
+                    doc_id = data['document_id']
+                    console.print(f"[green]✓[/green] {file_path.name} (ID: {doc_id[:8]}...)")
+                    success_count += 1
+                else:
+                    error_data = response.json() if response.headers.get('content-type') == 'application/json' else {}
+                    error_msg = error_data.get('detail', response.text)
+                    console.print(f"[red]✗[/red] {file_path.name}: {error_msg}")
+                    error_count += 1
                 
-                # Index document
-                doc_id = rag_ctx.indexer.index_document(file_path, parsed_metadata)
-                
-                # Restore original splitter
-                rag_ctx.indexer.splitter = original_splitter
-                
-                console.print(f"[green]✓[/green] {file_path.name} (ID: {doc_id[:8]}...)")
-                success_count += 1
-                
-            except ValueError as e:
-                console.print(f"[yellow]⚠[/yellow] {file_path.name}: {e}")
+            except requests.Timeout:
+                console.print(f"[red]✗[/red] {file_path.name}: Request timed out (file too large?)")
+                error_count += 1
+            except requests.RequestException as e:
+                console.print(f"[red]✗[/red] {file_path.name}: Failed to communicate with server")
                 error_count += 1
             except Exception as e:
                 console.print(f"[red]✗[/red] {file_path.name}: {e}")
@@ -172,6 +184,7 @@ def remove(
 ):
     """Remove document(s) from the active database"""
     rag_ctx = RAGContext()
+    manager = ServerManager(rag_ctx.config)
     
     try:
         rag_ctx.ensure_active_database()
@@ -179,29 +192,66 @@ def remove(
         console.print(f"[red]✗[/red] {e}", style="bold")
         raise typer.Exit(1)
     
-    # Load active database
-    db_name = rag_ctx.get_active_database_name()
+    # Ensure server is running
     try:
-        rag_ctx.load_database(db_name, verbose=False)
+        manager.ensure_server_running()
     except Exception as e:
-        console.print(f"[red]✗[/red] Error loading database: {e}", style="bold")
+        console.print(f"[red]✗[/red] {e}", style="bold")
+        console.print("\nTry starting the server: rag-anywhere server start")
         raise typer.Exit(1)
     
-    # Determine what we're searching for
+    # Get server port
+    status = manager.get_status()
+    port = status['port']
+    
+    # First, we need to resolve the identifier to a document ID
     doc_to_remove = None
     
-    if by_id or (not by_filename and len(identifier) == 36):  # UUID length
-        # Try to find by ID
-        doc_to_remove = rag_ctx.document_store.get_document(identifier)
-        if not doc_to_remove:
-            console.print(f"[red]✗[/red] Document with ID '{identifier}' not found", style="bold")
-            raise typer.Exit(1)
-    else:
-        # Try to find by filename
-        doc_to_remove = rag_ctx.document_store.get_document_by_filename(identifier)
-        if not doc_to_remove:
-            console.print(f"[red]✗[/red] Document with filename '{identifier}' not found", style="bold")
-            raise typer.Exit(1)
+    try:
+        if by_id or (not by_filename and len(identifier) == 36):  # UUID length
+            # Try to get by ID directly
+            response = requests.get(
+                f"http://127.0.0.1:{port}/documents/{identifier}",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                doc_to_remove = response.json()
+            else:
+                console.print(f"[red]✗[/red] Document with ID '{identifier}' not found", style="bold")
+                raise typer.Exit(1)
+        else:
+            # Search by filename
+            response = requests.get(
+                f"http://127.0.0.1:{port}/documents/list",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                documents = data['documents']
+                
+                # Find document with matching filename
+                matches = [doc for doc in documents if doc['filename'] == identifier]
+                
+                if not matches:
+                    console.print(f"[red]✗[/red] Document with filename '{identifier}' not found", style="bold")
+                    raise typer.Exit(1)
+                elif len(matches) > 1:
+                    console.print(f"[yellow]⚠[/yellow]  Multiple documents found with filename '{identifier}':")
+                    for doc in matches:
+                        console.print(f"  - ID: {doc['id']}")
+                    console.print("\nUse --by-id to specify which one to remove")
+                    raise typer.Exit(1)
+                else:
+                    doc_to_remove = matches[0]
+            else:
+                console.print("[red]✗[/red] Failed to list documents", style="bold")
+                raise typer.Exit(1)
+    
+    except requests.RequestException as e:
+        console.print(f"[red]✗[/red] Failed to communicate with server: {e}", style="bold")
+        raise typer.Exit(1)
     
     # Confirmation
     if not force:
@@ -211,16 +261,24 @@ def remove(
             console.print("Cancelled")
             raise typer.Exit(0)
     
-    # Remove document
+    # Remove document via API
     try:
-        success = rag_ctx.indexer.remove_document(doc_to_remove['id'])
-        if success:
+        response = requests.post(
+            f"http://127.0.0.1:{port}/documents/remove",
+            json={'document_id': doc_to_remove['id']},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
             console.print(f"[green]✓[/green] Removed document '{doc_to_remove['filename']}'", style="bold")
         else:
-            console.print(f"[red]✗[/red] Failed to remove document", style="bold")
+            error_data = response.json() if response.headers.get('content-type') == 'application/json' else {}
+            error_msg = error_data.get('detail', response.text)
+            console.print(f"[red]✗[/red] Failed to remove document: {error_msg}", style="bold")
             raise typer.Exit(1)
-    except Exception as e:
-        console.print(f"[red]✗[/red] Error removing document: {e}", style="bold")
+    
+    except requests.RequestException as e:
+        console.print(f"[red]✗[/red] Failed to communicate with server: {e}", style="bold")
         raise typer.Exit(1)
 
 
@@ -231,6 +289,7 @@ def list_documents(
 ):
     """List all documents in the active database"""
     rag_ctx = RAGContext()
+    manager = ServerManager(rag_ctx.config)
     
     try:
         rag_ctx.ensure_active_database()
@@ -238,13 +297,18 @@ def list_documents(
         console.print(f"[red]✗[/red] {e}", style="bold")
         raise typer.Exit(1)
     
-    # Load active database
-    db_name = rag_ctx.get_active_database_name()
+    # Ensure server is running
     try:
-        rag_ctx.load_database(db_name, verbose=False)
+        manager.ensure_server_running()
     except Exception as e:
-        console.print(f"[red]✗[/red] Error loading database: {e}", style="bold")
+        console.print(f"[red]✗[/red] {e}", style="bold")
+        console.print("\nTry starting the server: rag-anywhere server start")
         raise typer.Exit(1)
+    
+    # Get server port
+    status = manager.get_status()
+    port = status['port']
+    db_name = status['active_db']
     
     # Parse filter
     filter_dict = None
@@ -255,8 +319,23 @@ def list_documents(
             console.print(f"[red]✗[/red] Invalid JSON filter: {e}", style="bold")
             raise typer.Exit(1)
     
-    # Get documents
-    documents = rag_ctx.document_store.list_documents()
+    # Get documents from server
+    try:
+        response = requests.get(
+            f"http://127.0.0.1:{port}/documents/list",
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            console.print("[red]✗[/red] Failed to list documents", style="bold")
+            raise typer.Exit(1)
+        
+        data = response.json()
+        documents = data['documents']
+    
+    except requests.RequestException as e:
+        console.print(f"[red]✗[/red] Failed to communicate with server: {e}", style="bold")
+        raise typer.Exit(1)
     
     if not documents:
         console.print("No documents in database")
@@ -282,12 +361,9 @@ def list_documents(
             console.print(f"\n[bold cyan]{doc['filename']}[/bold cyan]")
             console.print(f"  ID: {doc['id']}")
             console.print(f"  Created: {doc['created_at']}")
-            if doc['metadata']:
+            if doc.get('metadata'):
                 console.print(f"  Metadata: {json.dumps(doc['metadata'])}")
-            
-            # Get chunk count
-            chunks = rag_ctx.document_store.get_chunks_by_document(doc['id'])
-            console.print(f"  Chunks: {len(chunks)}")
+            console.print(f"  Chunks: {doc.get('num_chunks', 'N/A')}")
     else:
         table = Table(title=f"Documents in '{db_name}'")
         table.add_column("Filename", style="cyan")
@@ -296,12 +372,11 @@ def list_documents(
         table.add_column("Chunks", style="green")
         
         for doc in documents:
-            chunks = rag_ctx.document_store.get_chunks_by_document(doc['id'])
             table.add_row(
                 doc['filename'],
                 doc['id'][:8] + "...",
                 doc['created_at'][:10],  # Just the date
-                str(len(chunks))
+                str(doc.get('num_chunks', 'N/A'))
             )
         
         console.print(table)

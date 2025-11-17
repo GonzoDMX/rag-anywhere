@@ -8,6 +8,8 @@ import os
 
 from ..context import RAGContext
 from ...core.embeddings.providers import EmbeddingGemmaProvider, OpenAIEmbeddingProvider
+from ...server.manager import ServerManager
+from ...server.state import ServerStatus
 
 app = typer.Typer()
 console = Console()
@@ -37,6 +39,7 @@ def create(
 ):
     """Create a new database"""
     ctx = RAGContext()
+    manager = ServerManager(ctx.config)
     
     # Check if database already exists
     if ctx.config.database_exists(name):
@@ -67,12 +70,19 @@ def create(
     try:
         if provider == "embeddinggemma":
             # Create a temporary provider to get specs
-            temp_provider = EmbeddingGemmaProvider(model_name=model, device=device)
-            dimension = temp_provider.dimension
-            max_tokens = temp_provider.max_tokens
+            from sentence_transformers import SentenceTransformer
+            import torch
             
-            # Clean up
-            del temp_provider
+            device_to_use = device
+            if device == "auto":
+                device_to_use = "cuda" if torch.cuda.is_available() else "cpu"
+            
+            # Just get the model to verify it exists
+            temp_model = SentenceTransformer(model, device=device_to_use)
+            dimension = 768  # EmbeddingGemma dimension
+            max_tokens = 2048
+            
+            del temp_model
             
         elif provider == "openai":
             # Check for API key
@@ -83,7 +93,7 @@ def create(
                 )
                 raise typer.Exit(1)
             
-            dimension = 768  # We configure OpenAI to return 768 dimensions
+            dimension = 768
             max_tokens = 8191
         
         else:
@@ -102,15 +112,23 @@ def create(
             }
         )
         
-        # Load the database (creates SQLite DB and loads model)
-        ctx.load_database(name, verbose=False)
+        # Set as active database
+        ctx.config.set_active_database(name)
         
         console.print(f"[green]✓[/green] Created database '{name}'", style="bold")
         console.print(f"  Provider: {provider}")
         console.print(f"  Model: {model}")
         console.print(f"  Dimensions: {dimension}")
         console.print(f"  Max tokens: {max_tokens}")
-        console.print(f"  Database is now [green]ACTIVE[/green]")
+        
+        # Start server with new database
+        console.print(f"\nStarting server for database '{name}'...")
+        try:
+            manager.start_server()
+            console.print(f"[green]✓[/green] Server started", style="bold")
+        except Exception as e:
+            console.print(f"[yellow]⚠[/yellow]  Server start failed: {e}")
+            console.print("You can start it manually with: rag-anywhere server start")
         
     except Exception as e:
         # Clean up on failure
@@ -118,6 +136,89 @@ def create(
             ctx.config.delete_database(name)
         console.print(f"[red]✗[/red] Error creating database: {e}", style="bold")
         raise typer.Exit(1)
+
+
+@app.command()
+def use(name: str = typer.Argument(..., help="Database name")):
+    """Switch to a different database"""
+    ctx = RAGContext()
+    manager = ServerManager(ctx.config)
+    
+    if not ctx.config.database_exists(name):
+        console.print(f"[red]✗[/red] Database '{name}' does not exist", style="bold")
+        console.print("Available databases:")
+        for db_name in ctx.config.list_databases():
+            console.print(f"  - {db_name}")
+        raise typer.Exit(1)
+    
+    # Get current active database
+    current_db = ctx.config.get_active_database()
+    
+    if current_db == name:
+        console.print(f"Database '{name}' is already active")
+        return
+    
+    # Warn if switching from another database
+    if current_db:
+        console.print(f"[yellow]⚠[/yellow]  Switching from '{current_db}' to '{name}'")
+    
+    try:
+        # Set as active
+        ctx.config.set_active_database(name)
+        
+        # Check server status
+        status = manager.get_status()
+        
+        if status['status'] in [ServerStatus.RUNNING.value, ServerStatus.SLEEPING.value]:
+            # Server is running, need to switch database
+            console.print("Reloading server with new database...")
+            
+            success = manager.switch_database(name)
+            
+            if success:
+                console.print(f"[green]✓[/green] Switched to database '{name}'", style="bold")
+            else:
+                # Fallback: restart server
+                console.print("[yellow]Server reload failed, restarting...[/yellow]")
+                manager.restart_server()
+                console.print(f"[green]✓[/green] Switched to database '{name}'", style="bold")
+        else:
+            # Server not running, just set active and start
+            console.print(f"Starting server for database '{name}'...")
+            manager.start_server()
+            console.print(f"[green]✓[/green] Switched to database '{name}'", style="bold")
+        
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error switching database: {e}", style="bold")
+        raise typer.Exit(1)
+
+
+@app.command()
+def deactivate():
+    """Deactivate the current database and stop the server"""
+    ctx = RAGContext()
+    manager = ServerManager(ctx.config)
+    
+    active_db = ctx.config.get_active_database()
+    
+    if not active_db:
+        console.print("No active database")
+        return
+    
+    console.print(f"Deactivating database '{active_db}'...")
+    
+    # Stop server
+    status = manager.get_status()
+    if status['status'] != ServerStatus.STOPPED.value:
+        console.print("Stopping server...")
+        manager.stop_server()
+    
+    # Clear active database
+    global_config = ctx.config.load_global_config()
+    global_config.pop('active_database', None)
+    ctx.config.save_global_config(global_config)
+    
+    console.print(f"[green]✓[/green] Deactivated database '{active_db}'", style="bold")
 
 
 @app.command()
@@ -150,25 +251,6 @@ def list():
             table.add_row(db_name, "ERROR", "ERROR", "")
     
     console.print(table)
-
-
-@app.command()
-def use(name: str = typer.Argument(..., help="Database name")):
-    """Switch to a different database"""
-    ctx = RAGContext()
-    
-    if not ctx.config.database_exists(name):
-        console.print(f"[red]✗[/red] Database '{name}' does not exist", style="bold")
-        console.print("Available databases:")
-        for db_name in ctx.config.list_databases():
-            console.print(f"  - {db_name}")
-        raise typer.Exit(1)
-    
-    try:
-        ctx.load_database(name, verbose=True)
-    except Exception as e:
-        console.print(f"[red]✗[/red] Error loading database: {e}", style="bold")
-        raise typer.Exit(1)
 
 
 @app.command()
@@ -238,9 +320,20 @@ def delete(
 ):
     """Delete a database and all its contents"""
     ctx = RAGContext()
+    manager = ServerManager(ctx.config)
     
     if not ctx.config.database_exists(name):
         console.print(f"[red]✗[/red] Database '{name}' does not exist", style="bold")
+        raise typer.Exit(1)
+    
+    # Check if database is active
+    active_db = ctx.config.get_active_database()
+    if active_db == name:
+        console.print(
+            f"[red]✗[/red] Cannot delete active database '{name}'",
+            style="bold"
+        )
+        console.print("Deactivate it first with: rag-anywhere db deactivate")
         raise typer.Exit(1)
     
     # Confirmation

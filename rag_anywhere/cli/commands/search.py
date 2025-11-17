@@ -2,10 +2,11 @@
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.syntax import Syntax
 from typing import Optional
+import requests
 
 from ..context import RAGContext
+from ...server.manager import ServerManager
 
 app = typer.Typer()
 console = Console()
@@ -20,29 +21,50 @@ def search(
     show_metadata: bool = typer.Option(False, "--metadata", "-m", help="Show chunk metadata"),
 ):
     """Search for documents in the active database"""
-    rag_ctx = RAGContext()
+    ctx = RAGContext()
+    manager = ServerManager(ctx.config)
     
     try:
-        rag_ctx.ensure_active_database()
+        ctx.ensure_active_database()
     except ValueError as e:
         console.print(f"[red]✗[/red] {e}", style="bold")
         raise typer.Exit(1)
     
-    # Load active database
-    db_name = rag_ctx.get_active_database_name()
+    # Ensure server is running
     try:
-        rag_ctx.load_database(db_name, verbose=False)
+        manager.ensure_server_running()
     except Exception as e:
-        console.print(f"[red]✗[/red] Error loading database: {e}", style="bold")
+        console.print(f"[red]✗[/red] {e}", style="bold")
         raise typer.Exit(1)
     
-    # Perform search
+    # Get server info
+    status = manager.get_status()
+    port = status['port']
+    
+    # Perform search via API
     console.print(f"Searching for: [bold]{query}[/bold]\n")
     
     try:
-        results = rag_ctx.searcher.search(query, top_k=top_k, min_score=min_score)
-    except Exception as e:
-        console.print(f"[red]✗[/red] Search error: {e}", style="bold")
+        response = requests.post(
+            f"http://127.0.0.1:{port}/search",
+            json={
+                'query': query,
+                'top_k': top_k,
+                'min_score': min_score
+            },
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            console.print(f"[red]✗[/red] Search failed: {response.text}", style="bold")
+            raise typer.Exit(1)
+        
+        data = response.json()
+        results = data['results']
+        
+    except requests.RequestException as e:
+        console.print(f"[red]✗[/red] Failed to communicate with server: {e}", style="bold")
+        console.print("\nTry restarting the server: rag-anywhere server restart")
         raise typer.Exit(1)
     
     if not results:
@@ -56,22 +78,17 @@ def search(
         # Header with score and document info
         header = (
             f"[bold cyan]Result {i}[/bold cyan] "
-            f"[dim](Score: {result.similarity_score:.3f})[/dim]\n"
-            f"[bold]Document:[/bold] {result.document_filename}\n"
-            f"[bold]Position:[/bold] Chunk {result.chunk_index} "
-            f"(chars {result.start_char}-{result.end_char})"
+            f"[dim](Score: {result['similarity_score']:.3f})[/dim]\n"
+            f"[bold]Document:[/bold] {result['document']['filename']}\n"
+            f"[bold]Position:[/bold] Chunk {result['position']['chunk_index']} "
+            f"(chars {result['position']['start_char']}-{result['position']['end_char']})"
         )
         
-        # Get content (with context if requested)
+        content = result['content']
+        
+        # TODO: Implement context fetching via API if needed
         if context > 0:
-            content = rag_ctx.searcher.get_document_context(
-                result.document_id,
-                result.chunk_index,
-                context_chunks=context
-            )
-            header += f"\n[dim](Showing {context} chunks before/after for context)[/dim]"
-        else:
-            content = result.chunk_content
+            header += f"\n[dim](Context fetching not yet implemented via API)[/dim]"
         
         # Create panel with content
         panel = Panel(
@@ -83,9 +100,9 @@ def search(
         console.print(panel)
         
         # Show metadata if requested
-        if show_metadata and result.metadata:
-            console.print(f"[dim]Metadata: {result.metadata}[/dim]")
+        if show_metadata and result.get('metadata'):
+            console.print(f"[dim]Metadata: {result['metadata']}[/dim]")
         
         # Show document ID for reference
-        console.print(f"[dim]Document ID: {result.document_id}[/dim]")
+        console.print(f"[dim]Document ID: {result['document']['id']}[/dim]")
         console.print()

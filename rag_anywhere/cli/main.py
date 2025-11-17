@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from .context import RAGContext
-from .commands import db, documents, search, info
+from .commands import db, documents, search, info, server
 
 app = typer.Typer(
     name="rag-anywhere",
@@ -14,6 +14,7 @@ app = typer.Typer(
 
 # Add command groups
 app.add_typer(db.app, name="db", help="Database management")
+app.add_typer(server.app, name="server", help="Server management")
 app.add_typer(documents.app, name="doc", help="Document management (alternative to direct commands)")
 
 # Add direct document commands at root level
