@@ -1,0 +1,29 @@
+# pyproject.toml
+[project]
+name = "rag-anywhere"
+version = "0.1.0"
+dependencies = [
+    "numpy>=1.24.0",
+    "faiss-cpu>=1.7.4",  # or faiss-gpu for GPU support
+    "torch>=2.0.0",
+    "transformers>=4.35.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+    "pypdf>=3.17.0",
+    "python-docx>=1.1.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+rag-anywhere = "rag_anywhere.cli.main:app"
