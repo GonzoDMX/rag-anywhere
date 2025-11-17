@@ -1,0 +1,45 @@
+# examples/test_document.txt
+RAG Anywhere Test Document
+
+This is a test document for the RAG Anywhere system.
+
+## Overview
+
+RAG (Retrieval-Augmented Generation) is a technique that combines 
+information retrieval with text generation. It allows AI systems to 
+access and use external knowledge sources to provide more accurate 
+and up-to-date responses.
+
+## Features
+
+RAG Anywhere provides the following features:
+
+1. Local-first design - Run completely offline
+2. Multiple embedding models - Choose local or cloud-based
+3. Flexible document support - PDF, DOCX, TXT, Markdown
+4. Fast vector search - Powered by FAISS
+5. Simple API - Easy integration with any application
+
+## Usage
+
+The system can be used via CLI commands or the REST API.
+
+### CLI Example
+```bash
+rag-anywhere db create my-docs
+rag-anywhere add document.pdf
+rag-anywhere search "my query"
+```
+
+### API Example
+```python
+from examples.client import RAGAnywhereClient
+
+client = RAGAnywhereClient()
+results = client.search("my query")
+```
+
+## Conclusion
+
+This test document contains various terms and concepts that can be 
+used to verify the search functionality of RAG Anywhere.
