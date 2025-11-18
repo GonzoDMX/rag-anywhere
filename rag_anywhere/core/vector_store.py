@@ -58,7 +58,8 @@ class VectorStore:
 
                 # Populate FAISS index and ID mapping. The IndexFlatIP.add
                 # binding takes the 2D float32 array as its single argument.
-                self.index.add(vectors_array.astype(np.float32))
+                # FAISS stubs show C-style API, but runtime uses Pythonic API (ignore)
+                self.index.add(vectors_array.astype(np.float32))  # type: ignore[call-arg]
                 self.id_map = {i: chunk_id for i, chunk_id in enumerate(chunk_ids)}
 
             print(f"Loaded {len(vectors)} vectors into FAISS index")
@@ -85,7 +86,8 @@ class VectorStore:
         # Add to FAISS
         faiss_id = len(self.id_map)
         to_add = np.array([vector], dtype=np.float32, copy=False)
-        self.index.add(to_add)
+        # FAISS stubs show C-style API, but runtime uses Pythonic API (ignore)
+        self.index.add(to_add)  # type: ignore[call-arg]
         self.id_map[faiss_id] = chunk_id
         
         # Persist to SQLite
@@ -120,7 +122,8 @@ class VectorStore:
         # Add to FAISS
         start_id = len(self.id_map)
         to_add_batch = vectors.astype(np.float32, copy=False)
-        self.index.add(to_add_batch)
+        # FAISS stubs show C-style API, but runtime uses Pythonic API (ignore)
+        self.index.add(to_add_batch)  # type: ignore[call-arg]
         
         # Update ID mapping
         for i, chunk_id in enumerate(chunk_ids):
@@ -163,7 +166,8 @@ class VectorStore:
         
         # Search FAISS index
         k = min(k, self.index.ntotal)  # Don't request more than available
-        distances, indices = self.index.search(
+        # FAISS stubs show C-style API, but runtime uses Pythonic API (ignore)
+        distances, indices = self.index.search(  # type: ignore[call-arg]
             np.array([query_vector], dtype=np.float32), 
             k
         )
