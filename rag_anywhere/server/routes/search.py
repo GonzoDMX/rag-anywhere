@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..models import (
-    SearchRequest, SearchResponse,
+    SearchRequest, SearchResponse, SearchResultItem,
     KeywordSearchRequest, KeywordSearchResponse, KeywordSearchResultItem,
     AdvancedKeywordSearchRequest,
     DocumentInfo, ChunkPosition
@@ -31,9 +31,27 @@ async def search(
             top_k=request.top_k,
             min_score=request.min_score
         )
-        
+
+        # Convert core SearchResult objects into API SearchResultItem models
         return SearchResponse(
-            results=[r.to_dict() for r in results]
+            results=[
+                SearchResultItem(
+                    chunk_id=r.chunk_id,
+                    content=r.chunk_content,
+                    similarity_score=r.similarity_score,
+                    document=DocumentInfo(
+                        id=r.document_id,
+                        filename=r.document_filename,
+                    ),
+                    position=ChunkPosition(
+                        chunk_index=r.chunk_index,
+                        start_char=r.start_char,
+                        end_char=r.end_char,
+                    ),
+                    metadata=r.metadata,
+                )
+                for r in results
+            ]
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

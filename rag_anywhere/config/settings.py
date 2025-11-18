@@ -1,9 +1,10 @@
 # rag_anywhere/config/settings.py
+
+import shutil
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
-import os
 
 
 class Config:
@@ -175,7 +176,6 @@ class Config:
     
     def delete_database(self, db_name: str):
         """Delete a database and all its files"""
-        import shutil
         db_dir = self.get_database_dir(db_name)
         if db_dir.exists():
             shutil.rmtree(db_dir)

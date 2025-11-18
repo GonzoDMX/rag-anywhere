@@ -1,12 +1,15 @@
 # rag_anywhere/core/loaders/base.py
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any, ClassVar, List
 
 
 class DocumentLoader(ABC):
     """Base class for document loaders"""
     
+    # Subclasses may override this with a list of supported file extensions
+    SUPPORTED_EXTENSIONS: ClassVar[List[str]] = []
+
     @abstractmethod
     def load(self, file_path: Path) -> str:
         """

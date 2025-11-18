@@ -1,7 +1,6 @@
 # rag_anywhere/utils/logging.py
 import logging
 from pathlib import Path
-from datetime import datetime
 
 
 def setup_logging(config_dir: Path, debug: bool = False):

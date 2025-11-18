@@ -44,3 +44,12 @@ class EmbeddingProvider(ABC):
     def estimate_tokens(self, text: str) -> int:
         """Estimate token count for text"""
         pass
+
+    def embed_query(self, query: str) -> np.ndarray:
+        """Generate an embedding for a search query.
+
+        Default implementation uses the same embedding as a single document
+        via embed_single. Providers may override this for specialized
+        query/document encoding.
+        """
+        return self.embed_single(query)

@@ -1,7 +1,8 @@
 # rag_anywhere/cli/context.py
+
+import os
 from pathlib import Path
 from typing import Optional
-import os
 
 from ..config import Config
 from ..core import (

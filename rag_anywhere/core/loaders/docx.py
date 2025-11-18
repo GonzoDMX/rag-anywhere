@@ -1,4 +1,5 @@
 # rag_anywhere/core/loaders/docx.py
+
 from pathlib import Path
 from typing import Dict, Any
 
@@ -24,7 +25,7 @@ class DocxLoader(DocumentLoader):
             raise FileNotFoundError(f"File not found: {file_path}")
         
         try:
-            doc = self.docx.Document(file_path)
+            doc = self.docx.Document(str(file_path))
             
             # Extract text from paragraphs
             paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
@@ -61,7 +62,7 @@ class DocxLoader(DocumentLoader):
         }
         
         try:
-            doc = self.docx.Document(file_path)
+            doc = self.docx.Document(str(file_path))
             core_props = doc.core_properties
             
             if core_props.title:

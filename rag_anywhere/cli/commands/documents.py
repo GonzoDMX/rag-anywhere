@@ -4,13 +4,12 @@ from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import json
 import requests
 
 from ..context import RAGContext
 from ...server.manager import ServerManager
-from ...core.splitters import SplitterFactory
 
 app = typer.Typer()
 console = Console()
@@ -334,11 +333,11 @@ def list_documents(
         raise typer.Exit(1)
 
     # Parse filter - supports two modes:
-    # Mode 1: comma-separated keys (filter by key existence)
-    # Mode 2: JSON object (filter by key-value pairs)
-    filter_mode = None  # 'keys' or 'key_values'
-    filter_keys = None
-    filter_dict = None
+    #   1) comma-separated keys (filter by key existence)
+    #   2) JSON object (filter by key-value pairs)
+    filter_mode: Optional[str] = None  # 'keys' or 'key_values'
+    filter_keys: Optional[List[str]] = None
+    filter_dict: Optional[Dict[str, Any]] = None
 
     if filter_json:
         # Try to parse as JSON first (mode 2)
@@ -348,14 +347,14 @@ def list_documents(
                 filter_mode = 'key_values'
                 filter_dict = parsed
             else:
-                console.print(f"[red]✗[/red] Filter must be a JSON object or comma-separated keys", style="bold")
+                console.print("[red]✗[/red] Filter must be a JSON object or comma-separated keys", style="bold")
                 raise typer.Exit(1)
         except json.JSONDecodeError:
             # Not JSON, treat as comma-separated keys (mode 1)
             filter_mode = 'keys'
             filter_keys = [k.strip() for k in filter_json.split(',') if k.strip()]
             if not filter_keys:
-                console.print(f"[red]✗[/red] Empty filter value", style="bold")
+                console.print("[red]✗[/red] Empty filter value", style="bold")
                 raise typer.Exit(1)
     
     # Get documents from server
@@ -381,7 +380,7 @@ def list_documents(
         return
     
     # Apply filter if provided
-    if filter_mode == 'keys':
+    if filter_mode == 'keys' and filter_keys is not None:
         # Mode 1: Filter by key existence
         filtered_docs = []
         for doc in documents:
@@ -393,7 +392,7 @@ def list_documents(
                 filtered_docs.append(doc)
         documents = filtered_docs
 
-    elif filter_mode == 'key_values':
+    elif filter_mode == 'key_values' and filter_dict is not None:
         # Mode 2: Filter by key-value pairs
         filtered_docs = []
         for doc in documents:
@@ -406,13 +405,25 @@ def list_documents(
         documents = filtered_docs
 
     # Handle no results after filtering
-    if not documents and (filter_mode is not None):
+    if not documents and filter_mode is not None:
         if filter_mode == 'keys':
-            console.print(f"[yellow]No documents match the filter keys: {', '.join(filter_keys)}[/yellow]")
-            console.print("\n[dim]Hint: Documents must have all these metadata keys.[/dim]")
-            console.print(f"  [dim]Example: rag-anywhere add <file> --metadata '[/dim]" + '{"' + filter_keys[0] + '":"value"}' + "[dim]'[/dim]")
+            if filter_keys:
+                console.print(f"[yellow]No documents match the filter keys: {', '.join(filter_keys)}[/yellow]")
+                console.print("\n[dim]Hint: Documents must have all these metadata keys.[/dim]")
+                console.print(
+                    f"  [dim]Example: rag-anywhere add <file> --metadata '[/dim]"
+                    + '{"' + filter_keys[0] + '":"value"}'
+                    + "[dim]'[/dim]"
+                )
+            else:
+                # Should not happen because we exit on empty filter_keys above,
+                # but kept for safety and clearer typing.
+                console.print("[yellow]No documents match the filter keys[/yellow]")
         elif filter_mode == 'key_values':
-            console.print(f"[yellow]No documents match the filter: {json.dumps(filter_dict)}[/yellow]")
+            if filter_dict is not None:
+                console.print(f"[yellow]No documents match the filter: {json.dumps(filter_dict)}[/yellow]")
+            else:
+                console.print("[yellow]No documents match the filter[/yellow]")
             console.print("\n[dim]Hint: Make sure you added documents with matching metadata using:[/dim]")
             console.print(f"  [dim]rag-anywhere add <file> --metadata '[/dim]" + '{"key":"value"}' + "[dim]'[/dim]")
         return

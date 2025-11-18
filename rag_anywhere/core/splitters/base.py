@@ -1,4 +1,5 @@
 # rag_anywhere/core/splitters/base.py
+
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Callable, Optional
 from dataclasses import dataclass
@@ -10,7 +11,7 @@ class TextChunk:
     content: str
     start_char: int
     end_char: int
-    metadata: Dict[str, Any] = None
+    metadata: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         if self.metadata is None:

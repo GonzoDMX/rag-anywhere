@@ -2,22 +2,22 @@
 import signal
 import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
+from typing import Optional
 
 from ..config import Config
 from ..cli.context import RAGContext
-from .state import ServerState, ServerStatus
+from .state import ServerState
 
 
 class ServerLifecycle:
     """Manages server startup and shutdown"""
     
     def __init__(self):
-        self.rag_context: RAGContext = None
-        self.config: Config = None
-        self.server_state: ServerState = None
-        self.db_name: str = None
-        self.port: int = None
+        self.rag_context: Optional[RAGContext] = None
+        self.config: Optional[Config] = None
+        self.server_state: Optional[ServerState] = None
+        self.db_name: Optional[str] = None
+        self.port: Optional[int] = None
     
     def setup(self, db_name: str, port: int):
         """Setup server resources"""

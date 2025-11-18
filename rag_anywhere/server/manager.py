@@ -1,10 +1,13 @@
 # rag_anywhere/server/manager.py
+
+import os
+import sys
+import signal
 import subprocess
 import time
-import sys
-from pathlib import Path
 from typing import Optional
 import socket
+import requests
 
 from .state import ServerState, ServerStatus
 from ..config import Config
@@ -151,7 +154,6 @@ class ServerManager:
         
         # Verify server is responding (with retries)
         logger.debug("Checking if server is responding...")
-        import requests
         
         max_retries = 5
         retry_delay = 2
@@ -205,8 +207,6 @@ class ServerManager:
         logger.info(f"Stopping server (PID: {pid})")
         
         try:
-            import signal
-            import os
             os.kill(pid, signal.SIGTERM)
             
             # Wait for graceful shutdown
@@ -298,7 +298,6 @@ class ServerManager:
         logger.info(f"Switching database from '{old_db}' to '{new_db_name}' (reload_model={reload_model})")
         
         # Send reload signal to server
-        import requests
         try:
             port = state_data['port']
             response = requests.post(

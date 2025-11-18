@@ -1,6 +1,6 @@
 # rag_anywhere/core/embeddings/utils.py
+
 import numpy as np
-from typing import Optional
 
 from .base import EmbeddingProvider
 

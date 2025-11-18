@@ -16,11 +16,25 @@ async def status(rag_context: RAGContext = Depends(get_rag_context)):
     
     Returns information about the active database and content statistics.
     """
+    # No active DB: report zeros instead of erroring
+    if (
+        rag_context.active_db_name is None
+        or rag_context.document_store is None
+        or rag_context.vector_store is None
+    ):
+        return StatusResponse(
+            status="running",
+            active_database=rag_context.active_db_name,
+            num_documents=0,
+            num_vectors=0,
+        )
+
+    # Active DB and stores available: compute real stats
     return StatusResponse(
         status="running",
         active_database=rag_context.active_db_name,
         num_documents=len(rag_context.document_store.list_documents()),
-        num_vectors=rag_context.vector_store.count()
+        num_vectors=rag_context.vector_store.count(),
     )
 
 

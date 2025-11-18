@@ -1,7 +1,8 @@
 # rag_anywhere/cli/commands/server.py
+
+import subprocess
 import typer
 from rich.console import Console
-from rich.table import Table
 from typing import Optional
 
 from ..context import RAGContext
@@ -193,7 +194,6 @@ def logs(
     
     if follow:
         # Tail -f equivalent
-        import subprocess
         subprocess.run(["tail", "-f", str(log_file)])
     else:
         # Show last 50 lines

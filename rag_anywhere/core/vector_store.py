@@ -1,8 +1,9 @@
 # rag_anywhere/core/vector_store.py
 import sqlite3
-import numpy as np
+from typing import Dict, List, Tuple
+
 import faiss
-from typing import List, Tuple, Optional
+import numpy as np
 
 
 class VectorStore:
@@ -13,8 +14,11 @@ class VectorStore:
     def __init__(self, db_path: str, dimension: int = 768):
         self.db_path = db_path
         self.dimension = dimension
-        self.index = None
-        self.id_map = {}  # Maps FAISS index positions to chunk IDs
+        # FAISS index for inner-product similarity search. Always initialized
+        # to a valid (possibly empty) index so type checkers know it's not None.
+        self.index: faiss.IndexFlatIP = faiss.IndexFlatIP(self.dimension)
+        # Maps FAISS index positions to chunk IDs
+        self.id_map: Dict[int, str] = {}
         self._load_or_create()
     
     def _load_or_create(self):
@@ -26,29 +30,40 @@ class VectorStore:
         cursor.execute("SELECT chunk_id, vector FROM chunk_vectors")
         rows = cursor.fetchall()
         conn.close()
-        
+
+        # Reset index and mapping to ensure we are always in a consistent state
+        self.index = faiss.IndexFlatIP(self.dimension)
+        self.id_map = {}
+
         if rows:
             # Load existing vectors into FAISS
             vectors = []
             chunk_ids = []
-            
+
             for chunk_id, vector_blob in rows:
                 vector = np.frombuffer(vector_blob, dtype=np.float32)
                 vectors.append(vector)
                 chunk_ids.append(chunk_id)
-            
-            # Create FAISS index with inner product (for cosine similarity with normalized vectors)
-            self.index = faiss.IndexFlatIP(self.dimension)
-            vectors_array = np.array(vectors, dtype=np.float32)
-            self.index.add(vectors_array)
-            
-            # Build ID mapping
-            self.id_map = {i: chunk_id for i, chunk_id in enumerate(chunk_ids)}
-            
+
+            if vectors:
+                # FAISS' Python bindings expose multiple index types; IndexFlatIP
+                # in this project expects a 2D float32 array of shape (n, d) as
+                # the first positional argument.
+                vectors_array = np.asarray(vectors, dtype=np.float32)
+                # Guard against any shape mismatch at runtime
+                if vectors_array.ndim != 2 or vectors_array.shape[1] != self.dimension:
+                    raise ValueError(
+                        f"Stored vectors have wrong shape {vectors_array.shape}, expected (*, {self.dimension})"
+                    )
+
+                # Populate FAISS index and ID mapping. The IndexFlatIP.add
+                # binding takes the 2D float32 array as its single argument.
+                self.index.add(vectors_array.astype(np.float32))
+                self.id_map = {i: chunk_id for i, chunk_id in enumerate(chunk_ids)}
+
             print(f"Loaded {len(vectors)} vectors into FAISS index")
         else:
-            # Create empty index
-            self.index = faiss.IndexFlatIP(self.dimension)
+            # Already initialized to an empty index above
             print("Created new empty FAISS index")
     
     def add(self, chunk_id: str, vector: np.ndarray):
@@ -69,7 +84,8 @@ class VectorStore:
         
         # Add to FAISS
         faiss_id = len(self.id_map)
-        self.index.add(np.array([vector], dtype=np.float32))
+        to_add = np.array([vector], dtype=np.float32, copy=False)
+        self.index.add(to_add)
         self.id_map[faiss_id] = chunk_id
         
         # Persist to SQLite
@@ -103,7 +119,8 @@ class VectorStore:
         
         # Add to FAISS
         start_id = len(self.id_map)
-        self.index.add(vectors.astype(np.float32))
+        to_add_batch = vectors.astype(np.float32, copy=False)
+        self.index.add(to_add_batch)
         
         # Update ID mapping
         for i, chunk_id in enumerate(chunk_ids):

@@ -2,7 +2,6 @@
 from fastapi import HTTPException
 
 from .lifecycle import lifecycle
-from .state import ServerState
 
 
 def get_rag_context():

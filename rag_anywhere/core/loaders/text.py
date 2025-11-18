@@ -1,4 +1,5 @@
 # rag_anywhere/core/loaders/text.py
+
 from pathlib import Path
 from typing import Dict, Any
 

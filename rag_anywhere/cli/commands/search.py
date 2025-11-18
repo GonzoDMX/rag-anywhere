@@ -78,7 +78,7 @@ def semantic_search(
         # Header with score and document info
         header = (
             f"[bold cyan]Result {i}[/bold cyan] "
-            f"[dim](Score: {result['similarity_score']:.3f})[/dim]\n"
+            f"[dim cyan](Score: {result['similarity_score']:.3f})[/dim cyan]\n"
             f"[bold]Document:[/bold] {result['document']['filename']}\n"
             f"[bold]Position:[/bold] Chunk {result['position']['chunk_index']} "
             f"(chars {result['position']['start_char']}-{result['position']['end_char']})"
@@ -205,7 +205,7 @@ def keyword(
         # Header with score and document info
         header = (
             f"[bold cyan]Result {i}[/bold cyan] "
-            f"[dim](Score: {result['score']:.3f})[/dim]\n"
+            f"[dim cyan](Score: {result['score']:.3f})[/dim cyan]\n"
             f"[bold]Document:[/bold] {result['document']['filename']}\n"
             f"[bold]Position:[/bold] Chunk {result['position']['chunk_index']} "
             f"(chars {result['position']['start_char']}-{result['position']['end_char']})"
@@ -321,7 +321,7 @@ def keyword_advanced(
     for i, result in enumerate(results, 1):
         header = (
             f"[bold cyan]Result {i}[/bold cyan] "
-            f"[dim](Score: {result['score']:.3f})[/dim]\n"
+            f"[dim cyan](Score: {result['score']:.3f})[/dim cyan]\n"
             f"[bold]Document:[/bold] {result['document']['filename']}\n"
             f"[bold]Position:[/bold] Chunk {result['position']['chunk_index']} "
             f"(chars {result['position']['start_char']}-{result['position']['end_char']})"

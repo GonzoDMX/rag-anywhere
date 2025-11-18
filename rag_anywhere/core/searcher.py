@@ -1,6 +1,6 @@
 # rag_anywhere/core/searcher.py
+
 from typing import List, Dict, Any, Optional
-import numpy as np
 
 from .embeddings import EmbeddingProvider
 from .vector_store import VectorStore
@@ -94,11 +94,8 @@ class Searcher:
             return []
         
         # Generate query embedding
-        # Use encode_query if available for better query-document matching
-        if hasattr(self.embedding_provider, 'embed_query'):
-            query_vector = self.embedding_provider.embed_query(query)
-        else:
-            query_vector = self.embedding_provider.embed_single(query)
+        # Providers may override embed_query for better query-document matching
+        query_vector = self.embedding_provider.embed_query(query)
         
         # Search vector store
         raw_results = self.vector_store.search(query_vector, k=top_k)
