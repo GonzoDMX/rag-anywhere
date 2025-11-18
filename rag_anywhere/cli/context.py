@@ -14,6 +14,9 @@ from ..core import (
     Searcher
 )
 from ..core.keyword_search import KeywordSearcher
+from ..utils.logging import get_logger
+
+logger = get_logger('cli.context')
 
 
 class RAGContext:
@@ -93,73 +96,101 @@ class RAGContext:
         Load a database and its resources.
         Handles embedding model loading/reloading.
         """
+        logger.info(f"Loading database '{db_name}'")
+
         if not self.config.database_exists(db_name):
+            logger.error(f"Database '{db_name}' does not exist")
             raise ValueError(f"Database '{db_name}' does not exist")
-        
-        # Load database config
-        self.db_config = self.config.load_database_config(db_name)
-        
-        # Check if we need to reload embedding model
-        current_model_key = self._get_model_key()
-        new_model_key = self._get_model_key_from_config(self.db_config)
-        
-        if current_model_key != new_model_key:
-            if verbose:
-                if current_model_key:
-                    print(f"Switching embedding model from {current_model_key} to {new_model_key}")
-                else:
+
+        try:
+            # Load database config
+            logger.debug(f"Loading database configuration for '{db_name}'")
+            self.db_config = self.config.load_database_config(db_name)
+            logger.debug(f"Database config loaded: provider={self.db_config['embedding']['provider']}, model={self.db_config['embedding']['model']}")
+
+            # Check if we need to reload embedding model
+            current_model_key = self._get_model_key()
+            new_model_key = self._get_model_key_from_config(self.db_config)
+            logger.debug(f"Current model: {current_model_key}, New model: {new_model_key}")
+
+            if current_model_key != new_model_key:
+                if verbose:
+                    if current_model_key:
+                        print(f"Switching embedding model from {current_model_key} to {new_model_key}")
+                        logger.info(f"Switching embedding model from {current_model_key} to {new_model_key}")
+                    else:
+                        print(f"Loading embedding model: {new_model_key}")
+                        logger.info(f"Loading embedding model: {new_model_key}")
+
+                # Unload old model
+                logger.debug("Unloading old embedding model")
+                self.embedding_provider = None
+                self._loaded_embedding_model = None
+
+                # Load new model
+                logger.debug("Creating new embedding provider")
+                self.embedding_provider = self._create_embedding_provider()
+                self._loaded_embedding_model = new_model_key
+                logger.info("Embedding provider created successfully")
+
+            elif verbose and self.embedding_provider:
+                print(f"Embedding model already loaded: {current_model_key}")
+                logger.debug(f"Embedding model already loaded: {current_model_key}")
+            elif not self.embedding_provider:
+                if verbose:
                     print(f"Loading embedding model: {new_model_key}")
-            
-            # Unload old model
-            self.embedding_provider = None
-            self._loaded_embedding_model = None
-            
-            # Load new model
-            self.embedding_provider = self._create_embedding_provider()
-            self._loaded_embedding_model = new_model_key
-        elif verbose and self.embedding_provider:
-            print(f"Embedding model already loaded: {current_model_key}")
-        elif not self.embedding_provider:
+                logger.info(f"Loading embedding model: {new_model_key}")
+                self.embedding_provider = self._create_embedding_provider()
+                self._loaded_embedding_model = new_model_key
+                logger.info("Embedding provider created successfully")
+
+            # Initialize loader registry
+            logger.debug("Initializing loader registry")
+            self.loader_registry = LoaderRegistry()
+
+            # Initialize document and vector stores
+            db_path = str(self.config.get_database_db_path(db_name))
+            logger.debug(f"Initializing document store at {db_path}")
+            self.document_store = DocumentStore(db_path)
+
+            logger.debug(f"Initializing vector store with dimension={self.db_config['embedding']['dimension']}")
+            self.vector_store = VectorStore(
+                db_path,
+                dimension=self.db_config['embedding']['dimension']
+            )
+
+            # Initialize keyword searcher
+            logger.debug("Initializing keyword searcher")
+            self.keyword_searcher = KeywordSearcher(db_path)
+
+            # Initialize indexer and searcher
+            logger.debug("Initializing indexer")
+            self.indexer = Indexer(
+                document_store=self.document_store,
+                vector_store=self.vector_store,
+                embedding_provider=self.embedding_provider,
+                keyword_searcher=self.keyword_searcher,
+                loader_registry=self.loader_registry
+            )
+
+            logger.debug("Initializing searcher")
+            self.searcher = Searcher(
+                document_store=self.document_store,
+                vector_store=self.vector_store,
+                embedding_provider=self.embedding_provider
+            )
+
+            # Set as active
+            self.active_db_name = db_name
+            self.config.set_active_database(db_name)
+            logger.info(f"Database '{db_name}' loaded and set as active")
+
             if verbose:
-                print(f"Loading embedding model: {new_model_key}")
-            self.embedding_provider = self._create_embedding_provider()
-            self._loaded_embedding_model = new_model_key
-        
-        # Initialize loader registry
-        self.loader_registry = LoaderRegistry()
-        
-        # Initialize document and vector stores
-        db_path = str(self.config.get_database_db_path(db_name))
-        self.document_store = DocumentStore(db_path)
-        self.vector_store = VectorStore(
-            db_path,
-            dimension=self.db_config['embedding']['dimension']
-        )
+                print(f"✓ Database '{db_name}' is now active")
 
-        # Initialize keyword searcher
-        self.keyword_searcher = KeywordSearcher(db_path)
-
-        # Initialize indexer and searcher
-        self.indexer = Indexer(
-            document_store=self.document_store,
-            vector_store=self.vector_store,
-            embedding_provider=self.embedding_provider,
-            keyword_searcher=self.keyword_searcher,
-            loader_registry=self.loader_registry
-        )
-
-        self.searcher = Searcher(
-            document_store=self.document_store,
-            vector_store=self.vector_store,
-            embedding_provider=self.embedding_provider
-        )
-        
-        # Set as active
-        self.active_db_name = db_name
-        self.config.set_active_database(db_name)
-        
-        if verbose:
-            print(f"✓ Database '{db_name}' is now active")
+        except Exception as e:
+            logger.error(f"Failed to load database '{db_name}': {type(e).__name__}: {e}", exc_info=True)
+            raise
     
     def _create_embedding_provider(self):
         """Create embedding provider from current config"""

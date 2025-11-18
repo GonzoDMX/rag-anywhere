@@ -5,6 +5,10 @@ from typing import Dict, List, Tuple
 import faiss
 import numpy as np
 
+from ..utils.logging import get_logger
+
+logger = get_logger('core.vector_store')
+
 
 class VectorStore:
     """
@@ -12,60 +16,90 @@ class VectorStore:
     """
     
     def __init__(self, db_path: str, dimension: int = 768):
+        logger.info(f"Initializing VectorStore with dimension={dimension}")
+        logger.debug(f"Database path: {db_path}")
+        logger.debug(f"FAISS version: {faiss.__version__}")
+
         self.db_path = db_path
         self.dimension = dimension
-        # FAISS index for inner-product similarity search. Always initialized
-        # to a valid (possibly empty) index so type checkers know it's not None.
-        self.index: faiss.IndexFlatIP = faiss.IndexFlatIP(self.dimension)
+
+        try:
+            # FAISS index for inner-product similarity search. Always initialized
+            # to a valid (possibly empty) index so type checkers know it's not None.
+            logger.debug(f"Creating FAISS IndexFlatIP with dimension {self.dimension}")
+            self.index: faiss.IndexFlatIP = faiss.IndexFlatIP(self.dimension)
+            logger.debug("FAISS index created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create FAISS index: {type(e).__name__}: {e}", exc_info=True)
+            raise
+
         # Maps FAISS index positions to chunk IDs
         self.id_map: Dict[int, str] = {}
+
         self._load_or_create()
     
     def _load_or_create(self):
         """Load vectors from SQLite into FAISS on startup"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        # Get all vectors from database
-        cursor.execute("SELECT chunk_id, vector FROM chunk_vectors")
-        rows = cursor.fetchall()
-        conn.close()
+        logger.debug("Loading vectors from SQLite into FAISS")
 
-        # Reset index and mapping to ensure we are always in a consistent state
-        self.index = faiss.IndexFlatIP(self.dimension)
-        self.id_map = {}
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
 
-        if rows:
-            # Load existing vectors into FAISS
-            vectors = []
-            chunk_ids = []
+            # Get all vectors from database
+            logger.debug("Querying chunk_vectors table")
+            cursor.execute("SELECT chunk_id, vector FROM chunk_vectors")
+            rows = cursor.fetchall()
+            conn.close()
 
-            for chunk_id, vector_blob in rows:
-                vector = np.frombuffer(vector_blob, dtype=np.float32)
-                vectors.append(vector)
-                chunk_ids.append(chunk_id)
+            logger.debug(f"Found {len(rows)} vectors in database")
 
-            if vectors:
-                # FAISS' Python bindings expose multiple index types; IndexFlatIP
-                # in this project expects a 2D float32 array of shape (n, d) as
-                # the first positional argument.
-                vectors_array = np.asarray(vectors, dtype=np.float32)
-                # Guard against any shape mismatch at runtime
-                if vectors_array.ndim != 2 or vectors_array.shape[1] != self.dimension:
-                    raise ValueError(
-                        f"Stored vectors have wrong shape {vectors_array.shape}, expected (*, {self.dimension})"
-                    )
+            # Reset index and mapping to ensure we are always in a consistent state
+            logger.debug("Resetting FAISS index and ID mapping")
+            self.index = faiss.IndexFlatIP(self.dimension)
+            self.id_map = {}
 
-                # Populate FAISS index and ID mapping. The IndexFlatIP.add
-                # binding takes the 2D float32 array as its single argument.
-                # FAISS stubs show C-style API, but runtime uses Pythonic API (ignore)
-                self.index.add(vectors_array.astype(np.float32))  # type: ignore[call-arg]
-                self.id_map = {i: chunk_id for i, chunk_id in enumerate(chunk_ids)}
+            if rows:
+                # Load existing vectors into FAISS
+                logger.info(f"Loading {len(rows)} vectors into FAISS index...")
+                vectors = []
+                chunk_ids = []
 
-            print(f"Loaded {len(vectors)} vectors into FAISS index")
-        else:
-            # Already initialized to an empty index above
-            print("Created new empty FAISS index")
+                for chunk_id, vector_blob in rows:
+                    vector = np.frombuffer(vector_blob, dtype=np.float32)
+                    vectors.append(vector)
+                    chunk_ids.append(chunk_id)
+
+                if vectors:
+                    # FAISS' Python bindings expose multiple index types; IndexFlatIP
+                    # in this project expects a 2D float32 array of shape (n, d) as
+                    # the first positional argument.
+                    vectors_array = np.asarray(vectors, dtype=np.float32)
+                    logger.debug(f"Vectors array shape: {vectors_array.shape}")
+
+                    # Guard against any shape mismatch at runtime
+                    if vectors_array.ndim != 2 or vectors_array.shape[1] != self.dimension:
+                        error_msg = f"Stored vectors have wrong shape {vectors_array.shape}, expected (*, {self.dimension})"
+                        logger.error(error_msg)
+                        raise ValueError(error_msg)
+
+                    # Populate FAISS index and ID mapping. The IndexFlatIP.add
+                    # binding takes the 2D float32 array as its single argument.
+                    # FAISS stubs show C-style API, but runtime uses Pythonic API (ignore)
+                    logger.debug("Adding vectors to FAISS index")
+                    self.index.add(vectors_array.astype(np.float32))  # type: ignore[call-arg]
+                    self.id_map = {i: chunk_id for i, chunk_id in enumerate(chunk_ids)}
+                    logger.info(f"Successfully loaded {len(vectors)} vectors into FAISS index")
+
+                print(f"Loaded {len(vectors)} vectors into FAISS index")
+            else:
+                # Already initialized to an empty index above
+                logger.info("No existing vectors found, created new empty FAISS index")
+                print("Created new empty FAISS index")
+
+        except Exception as e:
+            logger.error(f"Failed to load vectors: {type(e).__name__}: {e}", exc_info=True)
+            raise
     
     def add(self, chunk_id: str, vector: np.ndarray):
         """

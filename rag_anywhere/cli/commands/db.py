@@ -1,5 +1,7 @@
 # rag_anywhere/cli/commands/db.py
 import os
+import sys
+import platform
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -8,9 +10,11 @@ from typing import Optional
 from ..context import RAGContext
 from ...server.manager import ServerManager
 from ...server.state import ServerStatus
+from ...utils.logging import get_logger
 
 app = typer.Typer()
 console = Console()
+logger = get_logger('cli.db')
 
 
 @app.command()
@@ -64,41 +68,130 @@ def create(
     
     # Get model specifications
     console.print(f"Creating database '{name}' with {provider}:{model}...")
-    
+
+    # Log system information for debugging
+    logger.info(f"Creating database '{name}'")
+    logger.info(f"Python version: {sys.version}")
+    logger.info(f"Platform: {platform.platform()}")
+    logger.info(f"Machine: {platform.machine()}")
+    logger.info(f"Provider: {provider}, Model: {model}, Device: {device}")
+
     try:
         if provider == "embeddinggemma":
-            # Create a temporary provider to get specs
-            from sentence_transformers import SentenceTransformer
-            import torch
-            
+            logger.info("Initializing EmbeddingGemma provider...")
+
+            # Import dependencies with error handling
+            try:
+                from sentence_transformers import SentenceTransformer
+                import torch
+                logger.debug(f"PyTorch version: {torch.__version__}")
+            except ImportError as e:
+                logger.error(f"Failed to import required dependencies: {e}")
+                console.print(
+                    f"[red]✗[/red] Missing dependencies. Install with: pip install torch sentence-transformers",
+                    style="bold"
+                )
+                raise typer.Exit(1)
+
+            # Determine device with platform-specific logic
             device_to_use = device
             if device == "auto":
-                device_to_use = "cuda" if torch.cuda.is_available() else "cpu"
-            
-            # Just get the model to verify it exists
-            temp_model = SentenceTransformer(model, device=device_to_use)
-            dimension = 768  # EmbeddingGemma dimension
-            max_tokens = 2048
-            
-            del temp_model
+                logger.debug("Auto-detecting device...")
+
+                # Check for CUDA (NVIDIA GPUs)
+                cuda_available = torch.cuda.is_available()
+                logger.debug(f"CUDA available: {cuda_available}")
+
+                # Check for MPS (Apple Silicon)
+                mps_available = False
+                if hasattr(torch.backends, 'mps'):
+                    mps_available = torch.backends.mps.is_available()
+                    logger.debug(f"MPS available: {mps_available}")
+
+                # Select device with fallback chain
+                if cuda_available:
+                    device_to_use = "cuda"
+                    logger.info("Using CUDA device")
+                elif mps_available:
+                    # MPS can be unstable, so we'll try it but with CPU fallback
+                    device_to_use = "cpu"  # Use CPU by default on macOS for stability
+                    logger.info("MPS available but using CPU for stability (you can override with --device mps)")
+                else:
+                    device_to_use = "cpu"
+                    logger.info("Using CPU device")
+            else:
+                logger.info(f"Using user-specified device: {device_to_use}")
+
+            # Load model with comprehensive error handling
+            try:
+                # Check if model is cached
+                from pathlib import Path
+                cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+                model_cache_name = f"models--{model.replace('/', '--')}"
+                model_cached = (cache_dir / model_cache_name).exists()
+
+                if model_cached:
+                    logger.info(f"Loading cached model '{model}' on device '{device_to_use}'...")
+                else:
+                    logger.info(f"Downloading and loading model '{model}' on device '{device_to_use}'...")
+                    logger.info("This may take a few minutes (downloading ~1.2GB model)...")
+
+                temp_model = SentenceTransformer(model, device=device_to_use)
+                logger.info("Model loaded successfully")
+
+                dimension = 768  # EmbeddingGemma dimension
+                max_tokens = 2048
+
+                # Clean up temporary model instance (the actual model files remain cached)
+                del temp_model
+                logger.debug("Temporary model instance released from memory")
+
+            except Exception as e:
+                logger.error(f"Failed to load model: {type(e).__name__}: {e}", exc_info=True)
+                console.print(
+                    f"[red]✗[/red] Failed to load embedding model",
+                    style="bold"
+                )
+                console.print(f"Error: {e}")
+
+                # Provide helpful hints based on error type
+                if "CUDA" in str(e) or "cuda" in str(e):
+                    console.print("\n[yellow]Hint:[/yellow] CUDA error detected. Try using CPU:")
+                    console.print(f"  rag-anywhere db create {name} --device cpu")
+                elif "MPS" in str(e) or "mps" in str(e):
+                    console.print("\n[yellow]Hint:[/yellow] MPS error detected. Try using CPU:")
+                    console.print(f"  rag-anywhere db create {name} --device cpu")
+                elif "Segmentation fault" in str(e) or "segfault" in str(e):
+                    console.print("\n[yellow]Hint:[/yellow] Segmentation fault. This may be a PyTorch/platform compatibility issue.")
+                    console.print("Try reinstalling PyTorch for your platform:")
+                    console.print("  pip uninstall torch")
+                    console.print("  pip install torch")
+
+                raise typer.Exit(1)
             
         elif provider == "openai":
+            logger.info("Initializing OpenAI provider...")
+
             # Check for API key
             if not os.environ.get('OPENAI_API_KEY'):
+                logger.error("OPENAI_API_KEY environment variable not set")
                 console.print(
                     "[red]✗[/red] OpenAI provider requires OPENAI_API_KEY environment variable",
                     style="bold"
                 )
                 raise typer.Exit(1)
-            
+
             dimension = 768
             max_tokens = 8191
-        
+            logger.info("OpenAI provider configured")
+
         else:
+            logger.error(f"Unsupported provider: {provider}")
             console.print(f"[red]✗[/red] Unsupported provider: {provider}", style="bold")
             raise typer.Exit(1)
-        
+
         # Create database config
+        logger.info("Creating database configuration...")
         db_config = ctx.config.create_database_config(
             db_name=name,
             embedding_provider=provider,
@@ -109,34 +202,48 @@ def create(
             'embedding': {'device': device} if provider == 'embeddinggemma' else {}
             }
         )
-        
+
         if not db_config:
+            logger.error("Failed to create database configuration")
             console.print(f"[red]✗[/red] Failed to create database configuration", style="bold")
             raise typer.Exit(1)
-        
+
+        logger.info("Database configuration created successfully")
+
         # Set as active database
+        logger.info(f"Setting '{name}' as active database")
         ctx.config.set_active_database(name)
-        
+
         console.print(f"[green]✓[/green] Created database '{name}'", style="bold")
         console.print(f"  Provider: {provider}")
         console.print(f"  Model: {model}")
         console.print(f"  Dimensions: {dimension}")
         console.print(f"  Max tokens: {max_tokens}")
-        
+
         # Start server with new database
         console.print(f"\nStarting server for database '{name}'...")
         try:
+            logger.info("Starting server...")
             manager.start_server()
+            logger.info("Server started successfully")
             console.print(f"[green]✓[/green] Server started", style="bold")
         except Exception as e:
+            logger.warning(f"Server start failed: {e}", exc_info=True)
             console.print(f"[yellow]⚠[/yellow]  Server start failed: {e}")
             console.print("You can start it manually with: rag-anywhere server start")
-        
+
+    except typer.Exit:
+        # Re-raise typer.Exit to allow clean exit
+        raise
     except Exception as e:
         # Clean up on failure
+        logger.error(f"Database creation failed: {type(e).__name__}: {e}", exc_info=True)
         if ctx.config.database_exists(name):
+            logger.info(f"Cleaning up failed database '{name}'")
             ctx.config.delete_database(name)
         console.print(f"[red]✗[/red] Error creating database: {e}", style="bold")
+        console.print("\n[yellow]Tip:[/yellow] Run with --debug flag for detailed logs:")
+        console.print(f"  rag-anywhere --debug db create {name}")
         raise typer.Exit(1)
 
 

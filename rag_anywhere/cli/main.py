@@ -1,7 +1,11 @@
 # rag_anywhere/cli/main.py
+import os
 import typer
+from typing import Optional
 
 from .commands import db, documents, search, info, server
+from ..config.settings import Config
+from ..utils.logging import setup_logging
 
 app = typer.Typer(
     name="rag-anywhere",
@@ -28,11 +32,32 @@ app.command(name="status")(info.show_status)
 
 
 @app.callback()
-def callback():
+def callback(
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Enable debug mode with verbose output"
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "-v",
+        "--verbose",
+        help="Enable verbose output (same as --debug)"
+    )
+):
     """
     RAG Anywhere - Secure, portable, local-first RAG system
     """
-    pass
+    # Set debug flag if either --debug or -v is used
+    is_debug = debug or verbose
+
+    # Store debug state in environment variable so all commands can access it
+    if is_debug:
+        os.environ['RAG_ANYWHERE_DEBUG'] = '1'
+
+    # Initialize logging globally
+    config = Config()
+    setup_logging(config.config_dir, debug=is_debug)
 
 
 def main():

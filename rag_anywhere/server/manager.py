@@ -127,20 +127,20 @@ class ServerManager:
         
         # Wait a moment and check if it started
         logger.debug("Waiting for server to start...")
-        time.sleep(3)
-        
+        time.sleep(2)  # Initial wait for process to start
+
         # Check if process is still alive
         if process.poll() is not None:
             # Process died
             exit_code = process.returncode
             logger.error(f"Server process died with exit code {exit_code}")
-            
+
             # Read error logs
             stdout_file.close()
             stderr_file.close()
-            
+
             error_msg = "Server failed to start. "
-            
+
             # Try to read last few lines of stderr
             try:
                 with open(stderr_log, 'r') as f:
@@ -149,29 +149,28 @@ class ServerManager:
                         error_msg += "Last error:\n" + ''.join(lines[-10:])
             except Exception:
                 pass
-            
+
             raise RuntimeError(error_msg)
-        
+
         # Verify server is responding (with retries)
         logger.debug("Checking if server is responding...")
-        
-        max_retries = 5
-        retry_delay = 2
-        
+
+        max_retries = 10  # More retries for model loading
+        retry_delay = 3   # Longer delay between retries (3 seconds)
+
         for attempt in range(max_retries):
             try:
-                response = requests.get(f"http://127.0.0.1:{port}/status", timeout=3)
+                response = requests.get(f"http://127.0.0.1:{port}/status", timeout=5)
                 if response.status_code == 200:
                     logger.debug("Server is responding")
                     break
             except requests.RequestException as e:
                 if attempt < max_retries - 1:
-                    logger.debug(f"Server not ready yet (attempt {attempt + 1}/{max_retries}), waiting...")
+                    logger.debug(f"Server not ready yet (attempt {attempt + 1}/{max_retries}), waiting {retry_delay}s...")
                     time.sleep(retry_delay)
                 else:
-                    # Only log as warning in debug mode, not an error
-                    if debug:
-                        logger.warning(f"Server may not be fully ready yet: {e}")
+                    # Only log as warning, not an error - server may still be loading
+                    logger.warning(f"Server took longer than expected to respond: {e}")
                     # Don't fail - server is running, just may be loading
         
         # Save state

@@ -150,7 +150,8 @@ class KeywordSearcher:
         if exact_match:
             # 1. Handle exact match FIRST.
             # This converts the query to a phrase, escaping internal quotes.
-            fts_query = f'"{query.replace('"', '""')}"'
+            esc_query = query.replace('"', '""')
+            fts_query = '"' + esc_query + '"'
         
         elif escape_special_chars:
             # 2. Handle standard queries
