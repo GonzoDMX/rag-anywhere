@@ -1,9 +1,6 @@
 # rag_anywhere/cli/main.py
 import typer
-from pathlib import Path
-from typing import Optional
 
-from .context import RAGContext
 from .commands import db, documents, search, info, server
 
 app = typer.Typer(
@@ -22,8 +19,8 @@ app.command(name="add")(documents.add)
 app.command(name="remove")(documents.remove)
 app.command(name="list")(documents.list_documents)
 
-# Add search at root level
-app.command(name="search")(search.search)
+# Add search as a command group
+app.add_typer(search.app, name="search", help="Search for documents")
 
 # Add info at root level
 app.command(name="info")(info.show_info)

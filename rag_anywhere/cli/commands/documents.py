@@ -122,57 +122,66 @@ def add(
         raise typer.Exit(0)
     
     console.print(f"Found {len(files_to_add)} file(s) to index")
-    
-    # Index files with progress
-    success_count = 0
-    error_count = 0
-    
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console
-    ) as progress:
-        task = progress.add_task("Indexing documents...", total=len(files_to_add))
-        
-        for file_path in files_to_add:
-            try:
-                # Make API request to server
-                response = requests.post(
-                    f"http://127.0.0.1:{port}/documents/add",
-                    json={
-                        'file_path': str(file_path.absolute()),
-                        'metadata': parsed_metadata,
-                        'splitter_overrides': splitter_overrides
-                    },
-                    timeout=300  # 5 minutes for large documents
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    doc_id = data['document_id']
-                    console.print(f"[green]✓[/green] {file_path.name} (ID: {doc_id[:8]}...)")
-                    success_count += 1
+
+    # Build batch request
+    documents_batch = []
+    for file_path in files_to_add:
+        documents_batch.append({
+            'file_path': str(file_path.absolute()),
+            'metadata': parsed_metadata,
+            'splitter_overrides': splitter_overrides
+        })
+
+    # Make batch API request
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Indexing documents...", total=len(files_to_add))
+
+            response = requests.post(
+                f"http://127.0.0.1:{port}/documents/add-batch",
+                json={
+                    'documents': documents_batch,
+                    'fail_fast': False
+                },
+                timeout=600  # 10 minutes for batch
+            )
+
+            progress.update(task, completed=len(files_to_add))
+
+        if response.status_code == 200:
+            data = response.json()
+
+            # Display results
+            for result in data['results']:
+                if result['status'] == 'success':
+                    doc_id = result['document_id']
+                    filename = result['filename']
+                    console.print(f"[green]✓[/green] {filename} (ID: {doc_id[:8]}...)")
                 else:
-                    error_data = response.json() if response.headers.get('content-type') == 'application/json' else {}
-                    error_msg = error_data.get('detail', response.text)
+                    file_path = Path(result['file_path'])
+                    error_msg = result['error']
                     console.print(f"[red]✗[/red] {file_path.name}: {error_msg}")
-                    error_count += 1
-                
-            except requests.Timeout:
-                console.print(f"[red]✗[/red] {file_path.name}: Request timed out (file too large?)")
-                error_count += 1
-            except requests.RequestException as e:
-                console.print(f"[red]✗[/red] {file_path.name}: Failed to communicate with server")
-                error_count += 1
-            except Exception as e:
-                console.print(f"[red]✗[/red] {file_path.name}: {e}")
-                error_count += 1
-            
-            progress.advance(task)
-    
-    # Summary
-    console.print()
-    console.print(f"[bold]Summary:[/bold] {success_count} succeeded, {error_count} failed")
+
+            # Summary
+            console.print()
+            summary = data['summary']
+            console.print(f"[bold]Summary:[/bold] {summary['succeeded']} succeeded, {summary['failed']} failed")
+        else:
+            error_data = response.json() if response.headers.get('content-type') == 'application/json' else {}
+            error_msg = error_data.get('detail', response.text)
+            console.print(f"[red]✗[/red] Batch request failed: {error_msg}")
+            raise typer.Exit(1)
+
+    except requests.Timeout:
+        console.print(f"[red]✗[/red] Batch request timed out")
+        raise typer.Exit(1)
+    except requests.RequestException as e:
+        console.print(f"[red]✗[/red] Failed to communicate with server: {e}")
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -284,8 +293,12 @@ def remove(
 
 @app.command(name="list")
 def list_documents(
-    filter_json: Optional[str] = typer.Option(None, "--filter", "-f", help="JSON filter for metadata"),
+    filter_json: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter by metadata keys (comma-separated) or key-value pairs (JSON)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information"),
+    sort_by: str = typer.Option("created", "--sort", "-s", help="Sort by: created, filename, chunks"),
+    order: str = typer.Option("desc", "--order", "-o", help="Sort order: asc or desc"),
+    page: int = typer.Option(1, "--page", "-p", help="Page number (starts at 1)", min=1),
+    per_page: int = typer.Option(20, "--per-page", help="Results per page", min=1, max=100),
 ):
     """List all documents in the active database"""
     rag_ctx = RAGContext()
@@ -309,15 +322,41 @@ def list_documents(
     status = manager.get_status()
     port = status['port']
     db_name = status['active_db']
-    
-    # Parse filter
+
+    # Validate sort_by and order
+    valid_sort_by = ['created', 'filename', 'chunks']
+    if sort_by not in valid_sort_by:
+        console.print(f"[red]✗[/red] Invalid sort_by value. Must be one of: {', '.join(valid_sort_by)}", style="bold")
+        raise typer.Exit(1)
+
+    if order not in ['asc', 'desc']:
+        console.print(f"[red]✗[/red] Invalid order value. Must be 'asc' or 'desc'", style="bold")
+        raise typer.Exit(1)
+
+    # Parse filter - supports two modes:
+    # Mode 1: comma-separated keys (filter by key existence)
+    # Mode 2: JSON object (filter by key-value pairs)
+    filter_mode = None  # 'keys' or 'key_values'
+    filter_keys = None
     filter_dict = None
+
     if filter_json:
+        # Try to parse as JSON first (mode 2)
         try:
-            filter_dict = json.loads(filter_json)
-        except json.JSONDecodeError as e:
-            console.print(f"[red]✗[/red] Invalid JSON filter: {e}", style="bold")
-            raise typer.Exit(1)
+            parsed = json.loads(filter_json)
+            if isinstance(parsed, dict):
+                filter_mode = 'key_values'
+                filter_dict = parsed
+            else:
+                console.print(f"[red]✗[/red] Filter must be a JSON object or comma-separated keys", style="bold")
+                raise typer.Exit(1)
+        except json.JSONDecodeError:
+            # Not JSON, treat as comma-separated keys (mode 1)
+            filter_mode = 'keys'
+            filter_keys = [k.strip() for k in filter_json.split(',') if k.strip()]
+            if not filter_keys:
+                console.print(f"[red]✗[/red] Empty filter value", style="bold")
+                raise typer.Exit(1)
     
     # Get documents from server
     try:
@@ -342,22 +381,70 @@ def list_documents(
         return
     
     # Apply filter if provided
-    if filter_dict:
+    if filter_mode == 'keys':
+        # Mode 1: Filter by key existence
         filtered_docs = []
         for doc in documents:
             doc_metadata = doc.get('metadata', {})
+            if not doc_metadata:
+                continue
+            # Check if all required keys exist in metadata
+            if all(k in doc_metadata for k in filter_keys):
+                filtered_docs.append(doc)
+        documents = filtered_docs
+
+    elif filter_mode == 'key_values':
+        # Mode 2: Filter by key-value pairs
+        filtered_docs = []
+        for doc in documents:
+            doc_metadata = doc.get('metadata', {})
+            if not doc_metadata:
+                continue
             # Check if all filter key-value pairs match
             if all(doc_metadata.get(k) == v for k, v in filter_dict.items()):
                 filtered_docs.append(doc)
         documents = filtered_docs
-    
-    if not documents:
-        console.print("No documents match the filter")
+
+    # Handle no results after filtering
+    if not documents and (filter_mode is not None):
+        if filter_mode == 'keys':
+            console.print(f"[yellow]No documents match the filter keys: {', '.join(filter_keys)}[/yellow]")
+            console.print("\n[dim]Hint: Documents must have all these metadata keys.[/dim]")
+            console.print(f"  [dim]Example: rag-anywhere add <file> --metadata '[/dim]" + '{"' + filter_keys[0] + '":"value"}' + "[dim]'[/dim]")
+        elif filter_mode == 'key_values':
+            console.print(f"[yellow]No documents match the filter: {json.dumps(filter_dict)}[/yellow]")
+            console.print("\n[dim]Hint: Make sure you added documents with matching metadata using:[/dim]")
+            console.print(f"  [dim]rag-anywhere add <file> --metadata '[/dim]" + '{"key":"value"}' + "[dim]'[/dim]")
         return
-    
+
+    if not documents:
+        console.print("No documents in database")
+        return
+
+    # Sort documents
+    if sort_by == 'created':
+        documents.sort(key=lambda x: x['created_at'], reverse=(order == 'desc'))
+    elif sort_by == 'filename':
+        documents.sort(key=lambda x: x['filename'].lower(), reverse=(order == 'desc'))
+    elif sort_by == 'chunks':
+        documents.sort(key=lambda x: x.get('num_chunks', 0), reverse=(order == 'desc'))
+
+    # Calculate pagination
+    total_docs = len(documents)
+    total_pages = (total_docs + per_page - 1) // per_page  # Ceiling division
+
+    if page > total_pages and total_pages > 0:
+        console.print(f"[yellow]⚠[/yellow]  Page {page} exceeds total pages ({total_pages}). Showing last page.", style="bold")
+        page = total_pages
+
+    # Apply pagination
+    start_idx = (page - 1) * per_page
+    end_idx = min(start_idx + per_page, total_docs)
+    paginated_docs = documents[start_idx:end_idx]
+
     # Display documents
     if verbose:
-        for doc in documents:
+        for doc in paginated_docs:
             console.print(f"\n[bold cyan]{doc['filename']}[/bold cyan]")
             console.print(f"  ID: {doc['id']}")
             console.print(f"  Created: {doc['created_at']}")
@@ -365,19 +452,23 @@ def list_documents(
                 console.print(f"  Metadata: {json.dumps(doc['metadata'])}")
             console.print(f"  Chunks: {doc.get('num_chunks', 'N/A')}")
     else:
-        table = Table(title=f"Documents in '{db_name}'")
+        table = Table(title=f"Documents in '{db_name}' (Page {page}/{total_pages})")
         table.add_column("Filename", style="cyan")
         table.add_column("ID", style="dim")
         table.add_column("Created", style="magenta")
         table.add_column("Chunks", style="green")
-        
-        for doc in documents:
+
+        for doc in paginated_docs:
             table.add_row(
                 doc['filename'],
                 doc['id'][:8] + "...",
                 doc['created_at'][:10],  # Just the date
                 str(doc.get('num_chunks', 'N/A'))
             )
-        
+
         console.print(table)
-        console.print(f"\nTotal: {len(documents)} document(s)")
+
+        # Pagination info
+        console.print(f"\nShowing {start_idx + 1}-{end_idx} of {total_docs} document(s)")
+        if page < total_pages:
+            console.print(f"[dim]Use --page {page + 1} to see more[/dim]")

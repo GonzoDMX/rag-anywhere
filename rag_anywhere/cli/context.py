@@ -12,6 +12,7 @@ from ..core import (
     Indexer,
     Searcher
 )
+from ..core.keyword_search import KeywordSearcher
 
 
 class RAGContext:
@@ -30,11 +31,47 @@ class RAGContext:
         self.loader_registry = None
         self.document_store = None
         self.vector_store = None
+        self.keyword_searcher = None
         self.indexer = None
         self.searcher = None
-        
+
         # Track loaded embedding model for reuse
         self._loaded_embedding_model = None
+    
+    @property
+    def safe_indexer(self) -> Indexer:
+        """Get indexer with type assertion for type checker"""
+        if self.indexer is None:
+            raise RuntimeError("Indexer not initialized. Load a database first.")
+        return self.indexer
+    
+    @property
+    def safe_searcher(self) -> Searcher:
+        """Get searcher with type assertion for type checker"""
+        if self.searcher is None:
+            raise RuntimeError("Searcher not initialized. Load a database first.")
+        return self.searcher
+    
+    @property
+    def safe_document_store(self) -> DocumentStore:
+        """Get document store with type assertion for type checker"""
+        if self.document_store is None:
+            raise RuntimeError("Document store not initialized. Load a database first.")
+        return self.document_store
+    
+    @property
+    def safe_keyword_searcher(self) -> KeywordSearcher:
+        """Get keyword searcher with type assertion for type checker"""
+        if self.keyword_searcher is None:
+            raise RuntimeError("Keyword searcher not initialized. Load a database first.")
+        return self.keyword_searcher
+    
+    @property
+    def safe_embedding_provider(self):
+        """Get embedding provider with type assertion for type checker"""
+        if self.embedding_provider is None:
+            raise RuntimeError("Embedding provider not initialized. Load a database first.")
+        return self.embedding_provider
     
     def get_active_database_name(self) -> Optional[str]:
         """Get the name of the currently active database"""
@@ -97,15 +134,19 @@ class RAGContext:
             db_path,
             dimension=self.db_config['embedding']['dimension']
         )
-        
+
+        # Initialize keyword searcher
+        self.keyword_searcher = KeywordSearcher(db_path)
+
         # Initialize indexer and searcher
         self.indexer = Indexer(
             document_store=self.document_store,
             vector_store=self.vector_store,
             embedding_provider=self.embedding_provider,
+            keyword_searcher=self.keyword_searcher,
             loader_registry=self.loader_registry
         )
-        
+
         self.searcher = Searcher(
             document_store=self.document_store,
             vector_store=self.vector_store,
@@ -121,6 +162,8 @@ class RAGContext:
     
     def _create_embedding_provider(self):
         """Create embedding provider from current config"""
+        if self.db_config is None:
+            raise ValueError("Database config not loaded")
         embedding_config = self.db_config['embedding'].copy()
         
         # Add API key from environment if needed
@@ -159,10 +202,18 @@ class RAGContext:
         
         # Get defaults for file type
         config = self.config.get_splitter_config_for_file(
-            self.active_db_name,
+            self.active_db_name,  # type: ignore[arg-type]
             file_extension
         )
+        # Ensure active_db_name is not None
+        if self.active_db_name is None:
+            raise ValueError("No active database")
         
+        # Get defaults for file type
+        config = self.config.get_splitter_config_for_file(
+            self.active_db_name,
+            file_extension
+        )        
         # Apply overrides
         if overrides:
             config.update(overrides)

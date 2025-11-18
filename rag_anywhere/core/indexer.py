@@ -7,19 +7,21 @@ from .splitters import SplitterFactory
 from .embeddings import EmbeddingProvider
 from .document_store import DocumentStore
 from .vector_store import VectorStore
+from .keyword_search import KeywordSearcher
 
 
 class Indexer:
     """
     Orchestrates the document ingestion pipeline:
-    Load -> Split -> Embed -> Store
+    Load -> Split -> Embed -> Store (+ FTS5 Index)
     """
-    
+
     def __init__(
         self,
         document_store: DocumentStore,
         vector_store: VectorStore,
         embedding_provider: EmbeddingProvider,
+        keyword_searcher: Optional[KeywordSearcher] = None,
         loader_registry: Optional[LoaderRegistry] = None,
         splitter_strategy: str = "recursive",
         splitter_kwargs: Optional[Dict[str, Any]] = None
@@ -27,8 +29,9 @@ class Indexer:
         self.document_store = document_store
         self.vector_store = vector_store
         self.embedding_provider = embedding_provider
+        self.keyword_searcher = keyword_searcher
         self.loader_registry = loader_registry or LoaderRegistry()
-        
+
         # Create splitter
         splitter_kwargs = splitter_kwargs or {}
         self.splitter = SplitterFactory.create_splitter(
@@ -93,7 +96,13 @@ class Indexer:
         # Store vectors
         chunk_ids = [f"{doc_id}_{i}" for i in range(len(chunks))]
         self.vector_store.add_batch(chunk_ids, embeddings)
-        
+
+        # Index in FTS5 for keyword search
+        if self.keyword_searcher:
+            print(f"Indexing for keyword search...")
+            fts_chunks = [(chunk_id, chunk.content, "") for chunk_id, chunk in zip(chunk_ids, chunks)]
+            self.keyword_searcher.index_chunks_batch(fts_chunks)
+
         print(f"✓ Successfully indexed document '{file_path.name}' (ID: {doc_id})")
         return doc_id
     
@@ -172,6 +181,10 @@ class Indexer:
         # Delete vectors
         if chunk_ids:
             self.vector_store.delete(chunk_ids)
-        
+
+        # Delete from FTS5 index
+        if self.keyword_searcher and chunk_ids:
+            self.keyword_searcher.delete_chunks_batch(chunk_ids)
+
         print(f"✓ Removed document {doc_id} and {len(chunk_ids)} vectors")
         return True

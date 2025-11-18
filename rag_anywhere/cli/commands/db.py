@@ -1,13 +1,11 @@
 # rag_anywhere/cli/commands/db.py
+import os
 import typer
 from rich.console import Console
 from rich.table import Table
-from pathlib import Path
 from typing import Optional
-import os
 
 from ..context import RAGContext
-from ...core.embeddings.providers import EmbeddingGemmaProvider, OpenAIEmbeddingProvider
 from ...server.manager import ServerManager
 from ...server.state import ServerStatus
 
@@ -108,9 +106,13 @@ def create(
             embedding_dimension=dimension,
             embedding_max_tokens=max_tokens,
             additional_config={
-                'embedding': {'device': device} if provider == 'embeddinggemma' else {}
+            'embedding': {'device': device} if provider == 'embeddinggemma' else {}
             }
         )
+        
+        if not db_config:
+            console.print(f"[red]✗[/red] Failed to create database configuration", style="bold")
+            raise typer.Exit(1)
         
         # Set as active database
         ctx.config.set_active_database(name)
