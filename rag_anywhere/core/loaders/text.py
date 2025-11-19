@@ -39,6 +39,6 @@ class TextLoader(DocumentLoader):
         return {
             'filename': file_path.name,
             'file_size': stat.st_size,
-            'file_type': file_path.suffix,
+            'file_type': file_path.suffix.lower(),
             'mime_type': 'text/plain',
         }

@@ -81,7 +81,7 @@ class LoaderRegistry:
         loader = self.get_loader(file_path)
         if loader is None:
             raise ValueError(
-                f"No loader available for file type: {file_path.suffix}. "
+                f"No loader available for file type: {file_path.suffix.lower()}. "
                 f"Supported types: {self.get_supported_extensions()}"
             )
         
