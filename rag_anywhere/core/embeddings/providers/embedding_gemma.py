@@ -75,8 +75,7 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
             if is_local_path:
                 # Local model path
                 local_path = Path(model_name).expanduser().resolve()
-                logger.info(f"Loading local model from: {local_path}")
-                print(f"Loading local EmbeddingGemma on {self.device}...")
+                logger.info(f"Loading local model from: {local_path} on device {self.device}")
             else:
                 # HuggingFace model - check cache
                 cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
@@ -84,18 +83,16 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
                 model_cached = (cache_dir / model_cache_name).exists()
 
                 if model_cached:
-                    logger.info(f"Loading cached model '{model_name}' from {cache_dir / model_cache_name}")
-                    print(f"Loading EmbeddingGemma on {self.device}...")
+                    logger.info(f"Loading cached model '{model_name}' from {cache_dir / model_cache_name} on device {self.device}")
                 else:
                     logger.info(f"Downloading model '{model_name}' (~1.2GB for embeddinggemma-300m)")
                     logger.info(f"Model will be cached to: {cache_dir / model_cache_name}")
-                    print(f"Downloading and loading EmbeddingGemma on {self.device}...")
+                    logger.info(f"Loading on device {self.device}...")
 
             self.model = SentenceTransformer(model_name, device=self.device)
 
-            logger.info("Model loaded successfully")
+            logger.info("✓ EmbeddingGemma loaded successfully")
             logger.debug(f"Model dimension: {self.model.get_sentence_embedding_dimension()}")
-            print(f"✓ EmbeddingGemma loaded successfully")
 
         except Exception as e:
             logger.error(f"Failed to load model: {type(e).__name__}: {e}", exc_info=True)

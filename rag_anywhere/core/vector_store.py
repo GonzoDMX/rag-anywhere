@@ -89,13 +89,10 @@ class VectorStore:
                     logger.debug("Adding vectors to FAISS index")
                     self.index.add(vectors_array.astype(np.float32))  # type: ignore[call-arg]
                     self.id_map = {i: chunk_id for i, chunk_id in enumerate(chunk_ids)}
-                    logger.info(f"Successfully loaded {len(vectors)} vectors into FAISS index")
-
-                print(f"Loaded {len(vectors)} vectors into FAISS index")
+                    logger.info(f"✓ Successfully loaded {len(vectors)} vectors into FAISS index")
             else:
                 # Already initialized to an empty index above
-                logger.info("No existing vectors found, created new empty FAISS index")
-                print("Created new empty FAISS index")
+                logger.info("✓ Created new empty FAISS index")
 
         except Exception as e:
             logger.error(f"Failed to load vectors: {type(e).__name__}: {e}", exc_info=True)

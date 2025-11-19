@@ -103,18 +103,24 @@ class ServerManager:
         
         # Start server process
         try:
+            # Create environment with unbuffered output
+            env = os.environ.copy()
+            env['PYTHONUNBUFFERED'] = '1'
+
             # Run as module instead of script to support relative imports
             process = subprocess.Popen(
                 [
-                    sys.executable, 
-                    '-m', 
-                    'rag_anywhere.server.app',
-                    '--port', str(port), 
+                    sys.executable,
+                    '-u',  # Unbuffered output - critical for log capture
+                    '-m',
+                    'rag_anywhere.server',  # Uses __main__.py
+                    '--port', str(port),
                     '--db', active_db
                 ],
                 stdout=stdout_file if not debug else None,
                 stderr=stderr_file if not debug else None,
-                start_new_session=True  # Detach from parent
+                start_new_session=True,  # Detach from parent
+                env=env
             )
             
             logger.debug(f"Server process started with PID {process.pid}")

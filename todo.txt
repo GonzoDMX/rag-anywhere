@@ -5,3 +5,4 @@ These are items that we need TODO
 - Add auto metadata generator (Small Language model based, not user selectable)
 - Add knowledge graph functionality
 - Add CLI management commands for cached local models
+- Improve and automate server management
