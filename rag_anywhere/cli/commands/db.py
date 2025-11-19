@@ -6,6 +6,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 from typing import Optional
+from pathlib import Path
 
 from ..context import RAGContext
 from ...server.manager import ServerManager
@@ -17,6 +18,52 @@ console = Console()
 logger = get_logger('cli.db')
 
 
+def _validate_local_model_path(model_path: str) -> bool:
+    """
+    Validate that a local model path exists and contains required files.
+
+    Returns:
+        True if valid, False otherwise
+    """
+    path = Path(model_path).expanduser().resolve()
+
+    if not path.exists():
+        logger.error(f"Model path does not exist: {path}")
+        return False
+
+    if not path.is_dir():
+        logger.error(f"Model path is not a directory: {path}")
+        return False
+
+    # Check for essential model files
+    required_files = ['config.json']
+    has_model_file = False
+
+    for file in required_files:
+        if not (path / file).exists():
+            logger.error(f"Missing required file '{file}' in model directory: {path}")
+            return False
+
+    # Check for at least one model weight file
+    model_extensions = ['.bin', '.safetensors', '.pt', '.pth']
+    for ext in model_extensions:
+        if any(path.glob(f'*{ext}')):
+            has_model_file = True
+            break
+
+    if not has_model_file:
+        logger.error(f"No model weight files found in: {path}")
+        return False
+
+    logger.info(f"Local model path validated: {path}")
+    return True
+
+
+def _is_local_path(model: str) -> bool:
+    """Check if model string is a local path (relative or absolute)."""
+    return model.startswith(('.', '/', '~')) or Path(model).exists()
+
+
 @app.command()
 def create(
     name: str = typer.Argument(..., help="Database name"),
@@ -24,19 +71,13 @@ def create(
         "embeddinggemma",
         "--provider",
         "-p",
-        help="Embedding provider (embeddinggemma, openai)"
+        help="Embedding provider: embeddinggemma (local) or openai (API)"
     ),
     model: Optional[str] = typer.Option(
         None,
         "--model",
         "-m",
-        help="Model name (default depends on provider)"
-    ),
-    device: str = typer.Option(
-        "auto",
-        "--device",
-        "-d",
-        help="Device for local models (auto, cpu, cuda, mps)"
+        help="Model name or path. For embeddinggemma: HuggingFace model name or local path. For openai: model name (text-embedding-3-small, text-embedding-3-large)"
     )
 ):
     """Create a new database"""
@@ -74,99 +115,77 @@ def create(
     logger.info(f"Python version: {sys.version}")
     logger.info(f"Platform: {platform.platform()}")
     logger.info(f"Machine: {platform.machine()}")
-    logger.info(f"Provider: {provider}, Model: {model}, Device: {device}")
+    logger.info(f"Provider: {provider}, Model: {model}")
+
+    # Initialize model_to_store (will be updated if local model is cached)
+    model_to_store = model
 
     try:
         if provider == "embeddinggemma":
-            logger.info("Initializing EmbeddingGemma provider...")
+            logger.info("Validating EmbeddingGemma provider configuration...")
 
-            # Import dependencies with error handling
+            # Check dependencies are available (without importing heavy modules)
             try:
-                from sentence_transformers import SentenceTransformer
-                import torch
-                logger.debug(f"PyTorch version: {torch.__version__}")
+                import importlib.util
+                if importlib.util.find_spec("torch") is None:
+                    raise ImportError("torch not found")
+                if importlib.util.find_spec("sentence_transformers") is None:
+                    raise ImportError("sentence_transformers not found")
             except ImportError as e:
-                logger.error(f"Failed to import required dependencies: {e}")
+                logger.error(f"Missing required dependencies: {e}")
                 console.print(
                     f"[red]✗[/red] Missing dependencies. Install with: pip install torch sentence-transformers",
                     style="bold"
                 )
                 raise typer.Exit(1)
 
-            # Determine device with platform-specific logic
-            device_to_use = device
-            if device == "auto":
-                logger.debug("Auto-detecting device...")
-
-                # Check for CUDA (NVIDIA GPUs)
-                cuda_available = torch.cuda.is_available()
-                logger.debug(f"CUDA available: {cuda_available}")
-
-                # Check for MPS (Apple Silicon)
-                mps_available = False
-                if hasattr(torch.backends, 'mps'):
-                    mps_available = torch.backends.mps.is_available()
-                    logger.debug(f"MPS available: {mps_available}")
-
-                # Select device with fallback chain
-                if cuda_available:
-                    device_to_use = "cuda"
-                    logger.info("Using CUDA device")
-                elif mps_available:
-                    # MPS can be unstable, so we'll try it but with CPU fallback
-                    device_to_use = "cpu"  # Use CPU by default on macOS for stability
-                    logger.info("MPS available but using CPU for stability (you can override with --device mps)")
-                else:
-                    device_to_use = "cpu"
-                    logger.info("Using CPU device")
-            else:
-                logger.info(f"Using user-specified device: {device_to_use}")
-
-            # Load model with comprehensive error handling
+            # Validate and cache model if needed
             try:
-                # Check if model is cached
-                from pathlib import Path
-                cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
-                model_cache_name = f"models--{model.replace('/', '--')}"
-                model_cached = (cache_dir / model_cache_name).exists()
+                # Check if it's a local path
+                if _is_local_path(model):
+                    logger.info(f"Validating local model path: {model}")
+                    if not _validate_local_model_path(model):
+                        console.print(
+                            f"[red]✗[/red] Invalid local model path: {model}",
+                            style="bold"
+                        )
+                        console.print("Ensure the directory contains config.json and model weight files")
+                        raise typer.Exit(1)
 
-                if model_cached:
-                    logger.info(f"Loading cached model '{model}' on device '{device_to_use}'...")
+                    console.print(f"[green]✓[/green] Local model validated: {model}")
+
+                    # Cache the local model
+                    console.print("Copying model to cache...")
+                    logger.info(f"Caching local model from {model}")
+                    cached_path = ctx.config.cache_local_model(model)
+                    model_to_store = cached_path
+                    logger.info(f"Model cached to: {cached_path}")
+                    console.print(f"[green]✓[/green] Model cached to: {cached_path}")
                 else:
-                    logger.info(f"Downloading and loading model '{model}' on device '{device_to_use}'...")
-                    logger.info("This may take a few minutes (downloading ~1.2GB model)...")
+                    # For HuggingFace models, just check if it might be cached
+                    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+                    model_cache_name = f"models--{model.replace('/', '--')}"
+                    model_cached = (cache_dir / model_cache_name).exists()
 
-                temp_model = SentenceTransformer(model, device=device_to_use)
-                logger.info("Model loaded successfully")
+                    if model_cached:
+                        logger.info(f"Model '{model}' found in cache")
+                        console.print(f"[green]✓[/green] Model '{model}' found in cache")
+                    else:
+                        logger.info(f"Model '{model}' will be downloaded on first use (~1.2GB)")
+                        console.print(f"[yellow]ℹ[/yellow] Model '{model}' will be downloaded when server starts")
 
                 dimension = 768  # EmbeddingGemma dimension
                 max_tokens = 2048
 
-                # Clean up temporary model instance (the actual model files remain cached)
-                del temp_model
-                logger.debug("Temporary model instance released from memory")
-
+            except typer.Exit:
+                raise
             except Exception as e:
-                logger.error(f"Failed to load model: {type(e).__name__}: {e}", exc_info=True)
+                logger.error(f"Failed to validate model: {type(e).__name__}: {e}", exc_info=True)
                 console.print(
-                    f"[red]✗[/red] Failed to load embedding model",
+                    f"[red]✗[/red] Failed to validate embedding model",
                     style="bold"
                 )
                 console.print(f"Error: {e}")
-
-                # Provide helpful hints based on error type
-                if "CUDA" in str(e) or "cuda" in str(e):
-                    console.print("\n[yellow]Hint:[/yellow] CUDA error detected. Try using CPU:")
-                    console.print(f"  rag-anywhere db create {name} --device cpu")
-                elif "MPS" in str(e) or "mps" in str(e):
-                    console.print("\n[yellow]Hint:[/yellow] MPS error detected. Try using CPU:")
-                    console.print(f"  rag-anywhere db create {name} --device cpu")
-                elif "Segmentation fault" in str(e) or "segfault" in str(e):
-                    console.print("\n[yellow]Hint:[/yellow] Segmentation fault. This may be a PyTorch/platform compatibility issue.")
-                    console.print("Try reinstalling PyTorch for your platform:")
-                    console.print("  pip uninstall torch")
-                    console.print("  pip install torch")
-
                 raise typer.Exit(1)
             
         elif provider == "openai":
@@ -195,12 +214,9 @@ def create(
         db_config = ctx.config.create_database_config(
             db_name=name,
             embedding_provider=provider,
-            embedding_model=model,
+            embedding_model=model_to_store,
             embedding_dimension=dimension,
-            embedding_max_tokens=max_tokens,
-            additional_config={
-            'embedding': {'device': device} if provider == 'embeddinggemma' else {}
-            }
+            embedding_max_tokens=max_tokens
         )
 
         if not db_config:

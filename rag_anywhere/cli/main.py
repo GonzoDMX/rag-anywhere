@@ -1,7 +1,7 @@
 # rag_anywhere/cli/main.py
+
 import os
 import typer
-from typing import Optional
 
 from .commands import db, documents, search, info, server
 from ..config.settings import Config

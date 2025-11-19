@@ -1,15 +1,17 @@
 # rag_anywhere/cli/commands/documents.py
+
+import json
+import requests
 import typer
 from rich.console import Console
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from pathlib import Path
 from typing import Optional, List, Dict, Any
-import json
-import requests
 
 from ..context import RAGContext
 from ...server.manager import ServerManager
+from ...core.loaders import LoaderRegistry
 
 app = typer.Typer()
 console = Console()
@@ -95,7 +97,6 @@ def add(
     
     # Collect files to add
     # Get supported extensions from registry (need to create one temporarily)
-    from ...core.loaders import LoaderRegistry
     temp_registry = LoaderRegistry()
     supported_exts = set(temp_registry.get_supported_extensions())
     

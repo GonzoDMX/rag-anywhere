@@ -9,9 +9,10 @@ from datetime import datetime
 
 class Config:
     """Configuration management for RAG Anywhere"""
-    
+
     DEFAULT_CONFIG_DIR = Path.home() / ".rag-anywhere"
     DEFAULT_DATABASES_DIR = DEFAULT_CONFIG_DIR / "databases"
+    DEFAULT_MODELS_DIR = DEFAULT_CONFIG_DIR / "models"
     
     # Default splitter configurations per file type
     DEFAULT_SPLITTER_CONFIG = {
@@ -50,14 +51,16 @@ class Config:
     def __init__(self, config_dir: Optional[Path] = None):
         self.config_dir = config_dir or self.DEFAULT_CONFIG_DIR
         self.databases_dir = self.config_dir / "databases"
+        self.models_dir = self.config_dir / "models"
         self.global_config_path = self.config_dir / "config.yaml"
-        
+
         self._ensure_directories()
     
     def _ensure_directories(self):
         """Ensure configuration directories exist"""
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.databases_dir.mkdir(parents=True, exist_ok=True)
+        self.models_dir.mkdir(parents=True, exist_ok=True)
     
     def _load_yaml(self, path: Path) -> Dict[str, Any]:
         """Load YAML file"""
@@ -187,14 +190,14 @@ class Config:
             self.save_global_config(config)
     
     def get_splitter_config_for_file(
-        self, 
-        db_name: str, 
+        self,
+        db_name: str,
         file_extension: str
     ) -> Dict[str, Any]:
         """Get splitter configuration for a specific file type"""
         config = self.load_database_config(db_name)
         defaults = config.get('splitter', {}).get('defaults', {})
-        
+
         # Return file-type specific config or fall back to default recursive
         if file_extension in defaults:
             return defaults[file_extension].copy()
@@ -205,3 +208,41 @@ class Config:
                 'chunk_size': 6000,
                 'chunk_overlap': 600
             }
+
+    def cache_local_model(self, model_path: str) -> str:
+        """
+        Copy a local model to the models cache directory.
+
+        Args:
+            model_path: Path to the local model directory
+
+        Returns:
+            Path to the cached model (relative to models_dir for portability)
+
+        Raises:
+            ValueError: If model_path doesn't exist or is invalid
+        """
+        from hashlib import sha256
+
+        source_path = Path(model_path).expanduser().resolve()
+
+        if not source_path.exists():
+            raise ValueError(f"Model path does not exist: {source_path}")
+
+        if not source_path.is_dir():
+            raise ValueError(f"Model path is not a directory: {source_path}")
+
+        # Create a unique cache name based on the absolute path
+        # This ensures the same source path always maps to the same cache location
+        path_hash = sha256(str(source_path).encode()).hexdigest()[:12]
+        cache_name = f"{source_path.name}_{path_hash}"
+        cache_path = self.models_dir / cache_name
+
+        # If already cached, return the cached path
+        if cache_path.exists():
+            return str(cache_path)
+
+        # Copy the model to cache
+        shutil.copytree(source_path, cache_path, dirs_exist_ok=False)
+
+        return str(cache_path)

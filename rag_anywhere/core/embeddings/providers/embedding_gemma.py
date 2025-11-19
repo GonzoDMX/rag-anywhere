@@ -18,7 +18,7 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
     - Multi-lingual support
     """
     
-    def __init__(self, model_name: str = "google/embeddinggemma-300m", device: str = None):
+    def __init__(self, model_name: str = "google/embeddinggemma-300m"):
         logger.info(f"Initializing EmbeddingGemmaProvider with model '{model_name}'")
         logger.debug(f"Python version: {sys.version}")
         logger.debug(f"Platform: {platform.platform()}")
@@ -38,50 +38,58 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
 
         self.model_name = model_name
 
-        # Handle device parameter with platform-specific logic
-        if device == "auto" or device is None:
-            logger.debug("Auto-detecting device...")
+        # Auto-detect device based on installed packages
+        logger.debug("Auto-detecting device...")
 
-            # Check CUDA availability
-            cuda_available = torch.cuda.is_available()
-            logger.debug(f"CUDA available: {cuda_available}")
+        # Check CUDA availability (requires faiss-gpu and torch with CUDA)
+        cuda_available = torch.cuda.is_available()
+        logger.debug(f"CUDA available: {cuda_available}")
 
-            # Check MPS availability (Apple Silicon)
-            mps_available = False
-            if hasattr(torch.backends, 'mps'):
-                mps_available = torch.backends.mps.is_available()
-                logger.debug(f"MPS available: {mps_available}")
+        # Check MPS availability (Apple Silicon)
+        mps_available = False
+        if hasattr(torch.backends, 'mps'):
+            mps_available = torch.backends.mps.is_available()
+            logger.debug(f"MPS available: {mps_available}")
 
-            # Select device with fallback
-            if cuda_available:
-                device = "cuda"
-                logger.info("Selected CUDA device")
-            elif mps_available:
-                # Use CPU by default on macOS for stability
-                device = "cpu"
-                logger.info("MPS available but using CPU for stability")
-            else:
-                device = "cpu"
-                logger.info("Selected CPU device")
+        # Select device with fallback
+        if cuda_available:
+            self.device = "cuda"
+            logger.info("Using CUDA device (GPU)")
+        elif mps_available:
+            # Use CPU by default on macOS for stability
+            # MPS can be enabled in future if stability improves
+            self.device = "cpu"
+            logger.info("Using CPU device (MPS available but preferring CPU for stability)")
         else:
-            logger.info(f"Using user-specified device: {device}")
-
-        self.device = device
+            self.device = "cpu"
+            logger.info("Using CPU device")
 
         try:
-            # Check if model is cached in HuggingFace cache
+            # Check if model is a local path or HuggingFace model
             from pathlib import Path
-            cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
-            model_cache_name = f"models--{model_name.replace('/', '--')}"
-            model_cached = (cache_dir / model_cache_name).exists()
+            is_local_path = (
+                model_name.startswith(('.', '/', '~')) or
+                Path(model_name).exists()
+            )
 
-            if model_cached:
-                logger.info(f"Loading cached model '{model_name}' from {cache_dir / model_cache_name}")
-                print(f"Loading EmbeddingGemma on {self.device}...")
+            if is_local_path:
+                # Local model path
+                local_path = Path(model_name).expanduser().resolve()
+                logger.info(f"Loading local model from: {local_path}")
+                print(f"Loading local EmbeddingGemma on {self.device}...")
             else:
-                logger.info(f"Downloading model '{model_name}' (~1.2GB for embeddinggemma-300m)")
-                logger.info(f"Model will be cached to: {cache_dir / model_cache_name}")
-                print(f"Downloading and loading EmbeddingGemma on {self.device}...")
+                # HuggingFace model - check cache
+                cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+                model_cache_name = f"models--{model_name.replace('/', '--')}"
+                model_cached = (cache_dir / model_cache_name).exists()
+
+                if model_cached:
+                    logger.info(f"Loading cached model '{model_name}' from {cache_dir / model_cache_name}")
+                    print(f"Loading EmbeddingGemma on {self.device}...")
+                else:
+                    logger.info(f"Downloading model '{model_name}' (~1.2GB for embeddinggemma-300m)")
+                    logger.info(f"Model will be cached to: {cache_dir / model_cache_name}")
+                    print(f"Downloading and loading EmbeddingGemma on {self.device}...")
 
             self.model = SentenceTransformer(model_name, device=self.device)
 

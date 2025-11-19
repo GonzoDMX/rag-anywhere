@@ -89,9 +89,18 @@ If you're unsure, start with the standard CPU installation. You can always reins
 # Create a database with local EmbeddingGemma model (default)
 rag-anywhere db create my-docs
 
-# Or create with OpenAI embeddings
+# Use a local model (offline - will be cached to ~/.rag-anywhere/models/)
+rag-anywhere db create my-docs --model ../path/to/local/model
+
+# Use a different HuggingFace model
+rag-anywhere db create my-docs --model sentence-transformers/all-MiniLM-L6-v2
+
+# Create with OpenAI embeddings
 export OPENAI_API_KEY="your-key"
 rag-anywhere db create my-docs --provider openai
+
+# Use OpenAI's larger model
+rag-anywhere db create my-docs --provider openai --model text-embedding-3-large
 ```
 
 ### 2. Add Documents
@@ -149,6 +158,28 @@ rag-anywhere db info
 rag-anywhere db delete old-db
 ```
 
+## Key Features
+
+### 🔌 Offline-First Design
+- **Local Model Support**: Use models completely offline by providing a local path
+- **Automatic Caching**: Local models are cached to `~/.rag-anywhere/models/` for stability
+- **No Internet Required**: Once models are cached, works entirely offline
+
+### ⚡ Smart Device Detection
+- **Automatic GPU/CPU Selection**: Device automatically detected based on installed packages
+- **Install-Time Configuration**: Choose CPU or GPU at install time with `pip install -e .[gpu]`
+- **No Manual Configuration**: No need to specify device flags - it just works!
+
+### 🗄️ Flexible Database System
+- **Multiple Databases**: Create separate databases for different projects
+- **Per-Database Models**: Each database can use a different embedding model
+- **Easy Switching**: Switch between databases instantly with `rag-anywhere db use`
+
+### 🔍 Hybrid Search
+- **Semantic Search**: Dense vector search using embeddings
+- **Keyword Search**: Fast FTS5 full-text search with BM25 ranking
+- **Boolean Operators**: Support for AND, OR, NOT, phrase queries
+
 ## Architecture
 ```
 rag-anywhere/
@@ -180,6 +211,8 @@ RAG Anywhere stores configuration in `~/.rag-anywhere/`:
 ```
 ~/.rag-anywhere/
 ├── config.yaml              # Global config
+├── models/                  # Cached local models
+│   └── embeddinggemma-300m_abc123/
 └── databases/
     ├── my-docs/
     │   ├── rag.db          # SQLite database
@@ -213,7 +246,9 @@ splitter:
 
 ## Embedding Models
 
-### Local Models
+### Local Models (via sentence-transformers)
+
+RAG Anywhere supports any sentence-transformers compatible model. The device (CPU/GPU) is automatically detected based on your installation:
 
 **EmbeddingGemma** (default):
 - Model: `google/embeddinggemma-300m`
@@ -221,14 +256,42 @@ splitter:
 - Context: 2048 tokens
 - Multi-lingual support
 - Size: ~1.2GB
+- Usage: `rag-anywhere db create my-db` (default)
+
+**Using Local/Offline Models**:
+```bash
+# Download model on a different machine, then copy to your system
+# RAG Anywhere will cache it to ~/.rag-anywhere/models/
+rag-anywhere db create my-db --model /path/to/local/model
+```
+
+**Using Different HuggingFace Models**:
+```bash
+# Any sentence-transformers compatible model
+rag-anywhere db create my-db --model sentence-transformers/all-MiniLM-L6-v2
+```
+
+**Device Selection**:
+- **CPU** (default): Install with `pip install -e .`
+- **GPU** (CUDA): Install with `pip install -e .[gpu]`
+- Device is auto-detected at runtime based on installed packages
+- No manual device configuration needed!
 
 ### Remote Models
 
 **OpenAI**:
-- Model: `text-embedding-3-small`
+- Models: `text-embedding-3-small` (default), `text-embedding-3-large`
 - Dimensions: 768 (configurable)
 - Context: 8191 tokens
-- Requires API key
+- Requires API key: `export OPENAI_API_KEY="your-key"`
+- Usage:
+  ```bash
+  # Small model (default)
+  rag-anywhere db create my-db --provider openai
+
+  # Large model
+  rag-anywhere db create my-db --provider openai --model text-embedding-3-large
+  ```
 
 ## License
 

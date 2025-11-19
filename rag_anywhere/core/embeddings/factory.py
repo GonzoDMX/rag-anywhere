@@ -22,18 +22,8 @@ class EmbeddingProviderFactory:
         provider_type = config.get('provider', 'embeddinggemma')
         
         if provider_type == 'embeddinggemma':
-            # Explicitly handle optional device config to satisfy type checker
-            device_config = config.get('device')
-            device: str
-            if isinstance(device_config, str):
-                device = device_config
-            else:
-                # Let the provider decide the appropriate default (e.g. auto / cpu / cuda)
-                device = "auto"
-
             provider = EmbeddingGemmaProvider(
-                model_name=config.get('model', 'google/embeddinggemma-300m'),
-                device=device,
+                model_name=config.get('model', 'google/embeddinggemma-300m')
             )
         
         elif provider_type == 'openai':

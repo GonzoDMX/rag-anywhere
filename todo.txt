@@ -1,0 +1,7 @@
+These are items that we need TODO
+
+- Add more loaders and splitters to improve and expand file compatibility
+- Come up with a clever way to manage embedding model parameters this includes both how the user inputs parameters for an embedding model (or how we might auto-retrieve the params from a service, maybe a registry of common models) also we need a way for the splitters to auto-adapt to different context sizes. This will ensure we are always getting optimum performance with minimum configuration.
+- Add auto metadata generator (Small Language model based, not user selectable)
+- Add knowledge graph functionality
+- Add CLI management commands for cached local models
