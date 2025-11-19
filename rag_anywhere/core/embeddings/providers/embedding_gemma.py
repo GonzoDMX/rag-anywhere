@@ -19,17 +19,29 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
     """
     
     def __init__(self, model_name: str = "google/embeddinggemma-300m"):
+        sys.stderr.write(f"\n[EmbeddingGemma] Initializing with model '{model_name}'\n")
+        sys.stderr.flush()
+
         logger.info(f"Initializing EmbeddingGemmaProvider with model '{model_name}'")
         logger.debug(f"Python version: {sys.version}")
         logger.debug(f"Platform: {platform.platform()}")
         logger.debug(f"Machine: {platform.machine()}")
 
         try:
+            sys.stderr.write("[EmbeddingGemma] Importing sentence_transformers and torch...\n")
+            sys.stderr.flush()
+
             from sentence_transformers import SentenceTransformer
             import torch
+
+            sys.stderr.write(f"[EmbeddingGemma] PyTorch version: {torch.__version__}\n")
+            sys.stderr.flush()
+
             logger.debug(f"PyTorch version: {torch.__version__}")
             logger.debug(f"sentence-transformers imported successfully")
         except ImportError as e:
+            sys.stderr.write(f"[EmbeddingGemma] IMPORT ERROR: {e}\n")
+            sys.stderr.flush()
             logger.error(f"Failed to import required dependencies: {e}")
             raise ImportError(
                 "EmbeddingGemma requires 'sentence-transformers' package. "
@@ -37,6 +49,9 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
             )
 
         self.model_name = model_name
+
+        sys.stderr.write("[EmbeddingGemma] Auto-detecting device...\n")
+        sys.stderr.flush()
 
         # Auto-detect device based on installed packages
         logger.debug("Auto-detecting device...")
@@ -55,14 +70,18 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
         if cuda_available:
             self.device = "cuda"
             logger.info("Using CUDA device (GPU)")
+            sys.stderr.write("[EmbeddingGemma] Selected CUDA device\n")
         elif mps_available:
             # Use CPU by default on macOS for stability
             # MPS can be enabled in future if stability improves
             self.device = "cpu"
             logger.info("Using CPU device (MPS available but preferring CPU for stability)")
+            sys.stderr.write("[EmbeddingGemma] Selected CPU device (MPS available but using CPU)\n")
         else:
             self.device = "cpu"
             logger.info("Using CPU device")
+            sys.stderr.write("[EmbeddingGemma] Selected CPU device\n")
+        sys.stderr.flush()
 
         try:
             # Check if model is a local path or HuggingFace model
@@ -76,6 +95,8 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
                 # Local model path
                 local_path = Path(model_name).expanduser().resolve()
                 logger.info(f"Loading local model from: {local_path} on device {self.device}")
+                sys.stderr.write(f"[EmbeddingGemma] Loading local model from: {local_path}\n")
+                sys.stderr.flush()
             else:
                 # HuggingFace model - check cache
                 cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
@@ -84,17 +105,30 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
 
                 if model_cached:
                     logger.info(f"Loading cached model '{model_name}' from {cache_dir / model_cache_name} on device {self.device}")
+                    sys.stderr.write(f"[EmbeddingGemma] Loading from cache: {cache_dir / model_cache_name}\n")
                 else:
                     logger.info(f"Downloading model '{model_name}' (~1.2GB for embeddinggemma-300m)")
                     logger.info(f"Model will be cached to: {cache_dir / model_cache_name}")
                     logger.info(f"Loading on device {self.device}...")
+                    sys.stderr.write(f"[EmbeddingGemma] Downloading model '{model_name}'...\n")
+                sys.stderr.flush()
+
+            sys.stderr.write(f"[EmbeddingGemma] About to call SentenceTransformer('{model_name}', device='{self.device}')...\n")
+            sys.stderr.flush()
 
             self.model = SentenceTransformer(model_name, device=self.device)
+
+            sys.stderr.write("[EmbeddingGemma] SentenceTransformer loaded successfully!\n")
+            sys.stderr.flush()
 
             logger.info("✓ EmbeddingGemma loaded successfully")
             logger.debug(f"Model dimension: {self.model.get_sentence_embedding_dimension()}")
 
         except Exception as e:
+            sys.stderr.write(f"[EmbeddingGemma] EXCEPTION during model load: {type(e).__name__}: {e}\n")
+            import traceback
+            sys.stderr.write(traceback.format_exc())
+            sys.stderr.flush()
             logger.error(f"Failed to load model: {type(e).__name__}: {e}", exc_info=True)
             raise
     
