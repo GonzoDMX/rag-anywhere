@@ -33,12 +33,20 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 3. **Install the package**:
 ```bash
-# Development installation (editable)
+# Standard installation (CPU-based FAISS)
 pip install -e .
 
-# Or install from requirements
-pip install -r requirements.txt
-python setup.py develop
+# For GPU support (CUDA-enabled FAISS)
+pip install -e ".[gpu]"
+
+# For development (includes testing tools)
+pip install -e ".[dev]"
+
+# For OpenAI embeddings
+pip install -e ".[openai]"
+
+# Install multiple extras
+pip install -e ".[gpu,dev,openai]"
 ```
 
 4. **Verify installation**:
@@ -46,23 +54,33 @@ python setup.py develop
 rag-anywhere --help
 ```
 
-### Optional Dependencies
+### Installation Options
 
-**For OpenAI embeddings**:
-```bash
-pip install openai
-export OPENAI_API_KEY="your-api-key"
-```
+RAG Anywhere supports several optional dependency groups that can be installed using the extras syntax:
 
-**For API server** (coming soon):
-```bash
-pip install fastapi uvicorn
-```
+- **`[gpu]`** - CUDA-enabled FAISS for GPU acceleration
+  - Replaces `faiss-cpu` with `faiss-gpu`
+  - Requires NVIDIA GPU with CUDA support
+  - Significantly faster for large-scale vector operations
+  
+- **`[openai]`** - OpenAI API integration for embeddings
+  - Enables using OpenAI's embedding models
+  - Requires API key: `export OPENAI_API_KEY="your-key"`
+  
+- **`[dev]`** - Development and testing tools
+  - pytest, black, ruff, mypy, coverage tools
+  - Use when contributing or running tests
+  
+- **`[api]`** - API server dependencies (already included in base)
+  - FastAPI and Uvicorn for REST API
+  - Included by default in `requirements.txt`
 
-**For development**:
-```bash
-pip install -r requirements-dev.txt
-```
+**Note on GPU Support**: The GPU installation will only provide performance benefits if you have:
+- An NVIDIA GPU with CUDA support
+- Proper CUDA drivers installed
+- Compatible PyTorch with CUDA enabled (installed via sentence-transformers)
+
+If you're unsure, start with the standard CPU installation. You can always reinstall with GPU support later.
 
 ## Quick Start Guide
 

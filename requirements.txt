@@ -1,14 +1,17 @@
 # requirements.txt
-# Core dependencies
+# Core dependencies for RAG Anywhere
+# For GPU support, install with: pip install -e ".[gpu]"
+
+# Vector operations and search
 numpy>=1.24.0
 faiss-cpu>=1.7.4
 sentence-transformers>=2.2.0
 
-# CLI dependencies
+# CLI interface
 typer>=0.9.0
 rich>=13.0.0
 
-# Config and data handling
+# Configuration and data handling
 pyyaml>=6.0
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
@@ -17,7 +20,7 @@ pydantic-settings>=2.1.0
 pypdf>=3.17.0
 python-docx>=1.1.0
 
-# Server dependencies
+# Server dependencies (API functionality)
 fastapi>=0.104.0
 uvicorn>=0.24.0
 requests>=2.31.0
