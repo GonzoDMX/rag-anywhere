@@ -94,10 +94,7 @@ class LoaderRegistry:
         """Get list of all supported file extensions"""
         extensions = set()
         for loader in self.loaders:
+            # All loaders should define SUPPORTED_EXTENSIONS
             if hasattr(loader, 'SUPPORTED_EXTENSIONS'):
                 extensions.update(loader.SUPPORTED_EXTENSIONS)
-            elif isinstance(loader, PDFLoader):
-                extensions.add('.pdf')
-            elif isinstance(loader, DocxLoader):
-                extensions.update(['.docx', '.doc'])
         return sorted(extensions)

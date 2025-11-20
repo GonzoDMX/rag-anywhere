@@ -99,11 +99,15 @@ def add(
     # Get supported extensions from registry (need to create one temporarily)
     temp_registry = LoaderRegistry()
     supported_exts = set(temp_registry.get_supported_extensions())
-    
+
     files_to_add = []
     for path in paths:
         if path.is_file():
-            files_to_add.append(path)
+            # Validate individual files against supported extensions
+            if path.suffix.lower() in supported_exts:
+                files_to_add.append(path)
+            else:
+                console.print(f"[yellow]⚠[/yellow] Skipping unsupported file type: {path.name}")
         elif path.is_dir():
             if recursive:
                 files = [

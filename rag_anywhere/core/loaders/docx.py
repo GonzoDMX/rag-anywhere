@@ -9,6 +9,8 @@ from .base import DocumentLoader
 class DocxLoader(DocumentLoader):
     """Loader for Microsoft Word documents"""
     
+    SUPPORTED_EXTENSIONS = ['.docx', '.doc']
+    
     def __init__(self):
         try:
             import docx

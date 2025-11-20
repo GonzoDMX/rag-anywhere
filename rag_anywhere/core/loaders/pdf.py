@@ -9,6 +9,8 @@ from .base import DocumentLoader
 class PDFLoader(DocumentLoader):
     """Loader for PDF documents"""
     
+    SUPPORTED_EXTENSIONS = ['.pdf']
+    
     def __init__(self):
         try:
             import pypdf
