@@ -1,7 +1,12 @@
 # rag_anywhere/server/app.py
+
+import os
+import sys
 import argparse
-from fastapi import FastAPI
+import traceback
 import uvicorn
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from .lifecycle import lifespan
 from .routes import search, documents, admin
@@ -23,15 +28,11 @@ app.include_router(admin.router)
 @app.get("/status")
 async def root_status():
     """Root status endpoint (redirects to admin status)"""
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/admin/status")
 
 
 def main():
     """Main entry point for running the server"""
-    import sys
-    import os
-
     # Log to stderr immediately (before any other initialization)
     sys.stderr.write("=== RAG Anywhere Server Starting ===\n")
     sys.stderr.flush()
@@ -67,7 +68,6 @@ def main():
 
     except Exception as e:
         sys.stderr.write(f"FATAL ERROR in main(): {e}\n")
-        import traceback
         sys.stderr.write(traceback.format_exc())
         sys.stderr.flush()
         sys.exit(1)

@@ -5,6 +5,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
+from hashlib import sha256
 
 
 class Config:
@@ -222,8 +223,6 @@ class Config:
         Raises:
             ValueError: If model_path doesn't exist or is invalid
         """
-        from hashlib import sha256
-
         source_path = Path(model_path).expanduser().resolve()
 
         if not source_path.exists():

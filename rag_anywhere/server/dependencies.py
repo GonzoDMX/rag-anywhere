@@ -1,4 +1,5 @@
 # rag_anywhere/server/dependencies.py
+
 from fastapi import HTTPException
 
 from .lifecycle import lifecycle

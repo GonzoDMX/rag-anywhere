@@ -1,8 +1,11 @@
 # rag_anywhere/core/embeddings/providers/embedding_gemma.py
-import numpy as np
+
 import sys
+import traceback
 import platform
+import numpy as np
 from typing import List
+from pathlib import Path
 
 from ..base import EmbeddingProvider
 from ....utils.logging import get_logger
@@ -31,6 +34,7 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
             sys.stderr.write("[EmbeddingGemma] Importing sentence_transformers and torch...\n")
             sys.stderr.flush()
 
+            # Keep these imports here to reduce CLI lag on startup
             from sentence_transformers import SentenceTransformer
             import torch
 
@@ -85,7 +89,6 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
 
         try:
             # Check if model is a local path or HuggingFace model
-            from pathlib import Path
             is_local_path = (
                 model_name.startswith(('.', '/', '~')) or
                 Path(model_name).exists()
@@ -126,7 +129,6 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
 
         except Exception as e:
             sys.stderr.write(f"[EmbeddingGemma] EXCEPTION during model load: {type(e).__name__}: {e}\n")
-            import traceback
             sys.stderr.write(traceback.format_exc())
             sys.stderr.flush()
             logger.error(f"Failed to load model: {type(e).__name__}: {e}", exc_info=True)
@@ -194,6 +196,8 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
         logger.debug(f"Embedding query: '{query[:100]}{'...' if len(query) > 100 else ''}'")
 
         try:
+            import torch
+            
             # Check if model has encode_query method (some sentence-transformers models do)
             if hasattr(self.model, 'encode_query'):
                 logger.debug("Using encode_query method")
@@ -210,6 +214,12 @@ class EmbeddingGemmaProvider(EmbeddingProvider):
                     convert_to_numpy=True,
                     normalize_embeddings=True
                 )
+
+            # Ensure we always return a numpy array
+            if isinstance(embedding, torch.Tensor):
+                embedding = embedding.cpu().numpy()
+            elif not isinstance(embedding, np.ndarray):
+                embedding = np.array(embedding)
 
             logger.debug(f"Generated query embedding with shape {embedding.shape}")
             return embedding

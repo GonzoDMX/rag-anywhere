@@ -13,12 +13,12 @@ class PDFLoader(DocumentLoader):
         try:
             import pypdf
             self.pypdf = pypdf
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
-                "PDF support requires 'pypdf' package. "
+                "PDFLoader requires 'pypdf' package. "
                 "Install with: pip install pypdf"
-            )
-    
+            ) from e
+        
     def load(self, file_path: Path) -> str:
         """Load PDF file and extract text"""
         if not file_path.exists():

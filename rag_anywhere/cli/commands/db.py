@@ -3,12 +3,14 @@
 import os
 import sys
 import platform
+import shutil
 import typer
 from rich.console import Console
 from rich.table import Table
 from typing import Optional
 from pathlib import Path
 
+from ...core import DocumentStore, VectorStore
 from ..context import RAGContext
 from ...server.manager import ServerManager
 from ...server.state import ServerStatus
@@ -400,7 +402,6 @@ def info(name: Optional[str] = typer.Argument(None, help="Database name (default
     db_path = ctx.config.get_database_db_path(name)
     
     # Get database statistics
-    from ...core import DocumentStore, VectorStore
     doc_store = DocumentStore(str(db_path))
     vec_store = VectorStore(str(db_path), dimension=config['embedding']['dimension'])
     
@@ -503,7 +504,6 @@ def rename(
         raise typer.Exit(1)
     
     try:
-        import shutil
         old_dir = ctx.config.get_database_dir(old_name)
         new_dir = ctx.config.get_database_dir(new_name)
         

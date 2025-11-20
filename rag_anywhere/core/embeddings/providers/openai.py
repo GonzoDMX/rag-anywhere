@@ -1,6 +1,8 @@
 # rag_anywhere/core/embeddings/providers/openai.py
+
 import numpy as np
 from typing import List
+from openai import OpenAI
 
 from ..base import EmbeddingProvider
 
@@ -12,15 +14,8 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     """
     
     def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
-        try:
-            import openai
-        except ImportError:
-            raise ImportError(
-                "OpenAI provider requires 'openai' package. "
-                "Install with: pip install openai"
-            )
-        
-        self.client = openai.OpenAI(api_key=api_key)
+        """ Initialize OpenAI embedding provider. """
+        self.client = OpenAI(api_key=api_key)
         self.model = model
         self._dimension = 768
     

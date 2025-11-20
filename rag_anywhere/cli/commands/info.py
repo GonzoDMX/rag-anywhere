@@ -1,8 +1,10 @@
 # rag_anywhere/cli/commands/info.py
+
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from .db import info as db_info_cmd
 from ..context import RAGContext
 from ...server.manager import ServerManager
 from ...server.state import ServerStatus
@@ -25,7 +27,6 @@ def show_info():
     db_name = rag_ctx.get_active_database_name()
     
     # This will call the db info command
-    from .db import info as db_info_cmd
     db_info_cmd(db_name)
 
 

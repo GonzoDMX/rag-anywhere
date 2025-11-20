@@ -1,4 +1,5 @@
 # rag_anywhere/server/routes/search.py
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..models import (

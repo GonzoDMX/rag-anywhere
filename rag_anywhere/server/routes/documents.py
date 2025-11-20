@@ -1,6 +1,7 @@
 # rag_anywhere/server/routes/documents.py
-from fastapi import APIRouter, Depends, HTTPException
+
 from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..models import (
     AddDocumentRequest, AddDocumentResponse,

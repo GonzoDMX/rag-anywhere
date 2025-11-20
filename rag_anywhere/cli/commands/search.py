@@ -1,4 +1,5 @@
 # rag_anywhere/cli/commands/search.py
+
 import typer
 from rich.console import Console
 from rich.panel import Panel

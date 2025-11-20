@@ -14,6 +14,7 @@ Usage:
 """
 
 import requests
+import argparse
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -353,8 +354,6 @@ def run_example():
 
 def main():
     """Main entry point with argument parsing."""
-    import argparse
-    
     parser = argparse.ArgumentParser(
         description="RAG Anywhere Example Client",
         formatter_class=argparse.RawDescriptionHelpFormatter,

@@ -1,7 +1,8 @@
 # rag_anywhere/core/embeddings/base.py
+
+import numpy as np
 from abc import ABC, abstractmethod
 from typing import List
-import numpy as np
 
 
 class EmbeddingProvider(ABC):

@@ -1,9 +1,8 @@
 # rag_anywhere/core/vector_store.py
-import sqlite3
-from typing import Dict, List, Tuple
 
-import faiss
+import sqlite3
 import numpy as np
+from typing import Dict, List, Tuple
 
 from ..utils.logging import get_logger
 
@@ -16,6 +15,16 @@ class VectorStore:
     """
     
     def __init__(self, db_path: str, dimension: int = 768):
+        try:
+            import faiss
+            self.faiss = faiss
+        except ImportError as e:
+            logger.error("FAISS library is not installed. Please install it with 'pip install faiss-cpu' or 'pip install faiss-gpu'.")
+            raise ImportError(
+                "VectorStore requires 'faiss' package. "
+                "Install with: pip install faiss-cpu"
+            ) from e
+        
         logger.info(f"Initializing VectorStore with dimension={dimension}")
         logger.debug(f"Database path: {db_path}")
         logger.debug(f"FAISS version: {faiss.__version__}")
@@ -27,7 +36,7 @@ class VectorStore:
             # FAISS index for inner-product similarity search. Always initialized
             # to a valid (possibly empty) index so type checkers know it's not None.
             logger.debug(f"Creating FAISS IndexFlatIP with dimension {self.dimension}")
-            self.index: faiss.IndexFlatIP = faiss.IndexFlatIP(self.dimension)
+            self.index: faiss.IndexFlatIP = self.faiss.IndexFlatIP(self.dimension)
             logger.debug("FAISS index created successfully")
         except Exception as e:
             logger.error(f"Failed to create FAISS index: {type(e).__name__}: {e}", exc_info=True)
@@ -56,7 +65,7 @@ class VectorStore:
 
             # Reset index and mapping to ensure we are always in a consistent state
             logger.debug("Resetting FAISS index and ID mapping")
-            self.index = faiss.IndexFlatIP(self.dimension)
+            self.index = self.faiss.IndexFlatIP(self.dimension)
             self.id_map = {}
 
             if rows:

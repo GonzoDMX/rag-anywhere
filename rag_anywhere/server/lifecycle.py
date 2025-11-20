@@ -1,6 +1,7 @@
 # rag_anywhere/server/lifecycle.py
-import signal
+
 import sys
+import signal
 import traceback
 from contextlib import asynccontextmanager
 from typing import Optional

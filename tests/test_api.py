@@ -9,10 +9,11 @@ Tests all major API endpoints including:
 - Keyword search (simple and advanced)
 """
 
+import sys
+import argparse
 import requests
 from pathlib import Path
 import tempfile
-import sys
 
 
 class Colors:
@@ -352,8 +353,6 @@ class APITester:
 
 
 def main():
-    import argparse
-
     parser = argparse.ArgumentParser(description="Test RAG Anywhere API")
     parser.add_argument("--url", default="http://127.0.0.1:8000", help="API base URL")
     args = parser.parse_args()

@@ -13,12 +13,12 @@ class DocxLoader(DocumentLoader):
         try:
             import docx
             self.docx = docx
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
-                "DOCX support requires 'python-docx' package. "
+                "DocxLoader requires 'python-docx' package. "
                 "Install with: pip install python-docx"
-            )
-    
+            ) from e
+
     def load(self, file_path: Path) -> str:
         """Load DOCX file and extract text"""
         if not file_path.exists():
