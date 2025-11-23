@@ -48,11 +48,35 @@ class Config:
             'max_chunk_size': 6000
         }
     }
+
+    # Default GLiNER configuration
+    DEFAULT_GLINER_CONFIG = {
+        'enabled': True,
+        'model_size': 'multi',  # small, medium, multi (default), large
+        'confidence_threshold': 0.5,
+        'batch_size': 32,
+        'subchunk_word_size': 320,
+        'subchunk_overlap': 10,
+        'max_labels_per_pass': 10,
+        'default_labels': [
+            'person',
+            'organization',
+            'location',
+            'technology',
+            'process',
+            'event',
+            'metric',
+            'date',
+            'concept',
+            'issue'
+        ]
+    }
     
     def __init__(self, config_dir: Optional[Path] = None):
         self.config_dir = config_dir or self.DEFAULT_CONFIG_DIR
         self.databases_dir = self.config_dir / "databases"
         self.models_dir = self.config_dir / "models"
+        self.gliner_models_dir = self.models_dir / "gliner"
         self.global_config_path = self.config_dir / "config.yaml"
 
         self._ensure_directories()
@@ -62,6 +86,7 @@ class Config:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.databases_dir.mkdir(parents=True, exist_ok=True)
         self.models_dir.mkdir(parents=True, exist_ok=True)
+        self.gliner_models_dir.mkdir(parents=True, exist_ok=True)
     
     def _load_yaml(self, path: Path) -> Dict[str, Any]:
         """Load YAML file"""
@@ -153,7 +178,8 @@ class Config:
             },
             'vector_store': {
                 'metric': 'cosine'
-            }
+            },
+            'gliner': self.DEFAULT_GLINER_CONFIG.copy()
         }
         
         # Merge additional config

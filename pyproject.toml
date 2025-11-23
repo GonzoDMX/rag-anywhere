@@ -1,6 +1,6 @@
 # pyproject.toml
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=80", "wheel", "setuptools_scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,72 +8,75 @@ name = "rag-anywhere"
 version = "0.1.0"
 description = "Secure, portable, local-first RAG system with configurable embedding models"
 authors = [
-    {name = "Andrew", email = "your.email@example.com"}
+    {name = "Andrew", email = "andrewoshei@gmail.com"}
 ]
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 keywords = ["rag", "embedding", "vector-search", "document-search", "nlp"]
 
 dependencies = [
-    "numpy>=1.24.0",
-    "faiss-cpu>=1.7.4",
-    "sentence-transformers>=2.2.0",
-    "typer>=0.9.0",
-    "rich>=13.0.0",
-    "pyyaml>=6.0",
-    "pypdf>=3.17.0",
-    "python-docx>=1.1.0",
-    "pydantic>=2.5.0",
-    "pydantic-settings>=2.1.0",
+    "numpy>=2.3.0",
+    "sentence-transformers>=5.1.2",
+    "transformers>=4.48.0",
+    "accelerate>=1.2.1",
+    "openai>=2.8.1",
+    "typer>=0.20.0",
+    "rich>=14.2.0",
+    "pyyaml>=6.0.3",
+    "pypdf>=6.3.0",
+    "python-docx>=1.2.0",
+    "pydantic>=2.12.4",
+    "pydantic-settings>=2.12.0",
+    "gliner>=0.2.22",
+    "fastapi[standard]>=0.121.3",
+    "uvicorn[standard]>=0.38.0",
+    "requests>=2.32.5",
+    "psutil>=7.1.3",
 ]
 
 [project.optional-dependencies]
+# CPU vector search (FAISS)
+cpu = [
+    "faiss-cpu>=1.13.0",
+]
 # GPU support (CUDA-enabled FAISS)
 gpu = [
-    "faiss-gpu>=1.7.4",
-]
-# API server dependencies
-api = [
-    "fastapi>=0.104.0",
-    "uvicorn>=0.24.0",
-    "requests>=2.31.0",
-    "psutil>=5.9.0",
-]
-# OpenAI embeddings
-openai = [
-    "openai>=1.0.0",
+    "faiss-gpu-cu12>=1.13.0",
 ]
 # Development dependencies
 dev = [
-    "pytest>=7.4.0",
-    "pytest-cov>=4.1.0",
-    "black>=23.0.0",
-    "ruff>=0.1.0",
-    "mypy>=1.7.0",
+    "pytest>=9.0.1",
+    "pytest-cov>=7.0.0",
+    "black>=25.11.0",
+    "ruff>=0.14.6",
+    "mypy>=1.18.2",
 ]
 # All optional dependencies
 all = [
-    "rag-anywhere[api,openai,dev]",
+    "rag-anywhere[gpu,dev]",
+]
+# Standard with optional dependencies
+standard = [
+    "rag-anywhere[cpu,dev]",
 ]
 
 [project.scripts]
 rag-anywhere = "rag_anywhere.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/rag-anywhere"
-Repository = "https://github.com/yourusername/rag-anywhere"
-Issues = "https://github.com/yourusername/rag-anywhere/issues"
+Homepage = "https://github.com/gonzodmx/rag-anywhere"
+Repository = "https://github.com/gonzodmx/rag-anywhere"
+Issues = "https://github.com/gonzodmx/rag-anywhere/issues"
 
 [tool.setuptools]
 packages = ["rag_anywhere"]
@@ -83,12 +86,12 @@ rag_anywhere = ["py.typed"]
 
 [tool.black]
 line-length = 100
-target-version = ['py39', 'py310', 'py311']
+target-version = ['py312', 'py313', 'py314']
 include = '\.pyi?$'
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py312"
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -103,7 +106,7 @@ ignore = [
 ]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

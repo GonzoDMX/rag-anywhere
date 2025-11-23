@@ -100,6 +100,44 @@ class ListDocumentsResponse(BaseModel):
     documents: List[DocumentListItem]
 
 
+# Knowledge Graph Models
+class EntityItem(BaseModel):
+    id: int
+    name: str
+    display_name: str
+    category: str
+    frequency: int
+
+
+class EntityListResponse(BaseModel):
+    entities: List[EntityItem]
+    total: int
+
+
+class EntityDetailsResponse(BaseModel):
+    entity: EntityItem
+    chunk_ids: List[str]
+    related_entities: List[Dict[str, Any]]
+
+
+class KGStatsResponse(BaseModel):
+    total_entities: int
+    total_edges: int
+    by_category: Dict[str, int]
+    top_entities: List[Dict[str, Any]]
+
+
+class ReprocessRequest(BaseModel):
+    document_id: Optional[str] = Field(None, description="Document ID to reprocess")
+    labels: Optional[List[str]] = Field(None, description="Additional entity labels")
+
+
+class ReprocessResponse(BaseModel):
+    status: str
+    documents_processed: int
+    total_entities: int
+
+
 class StatusResponse(BaseModel):
     status: str
     active_database: Optional[str]

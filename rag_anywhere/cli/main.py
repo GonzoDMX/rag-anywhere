@@ -3,7 +3,7 @@
 import os
 import typer
 
-from .commands import db, documents, search, info, server
+from .commands import db, documents, search, info, server, kg
 from ..config.settings import Config
 from ..utils.logging import setup_logging
 
@@ -17,6 +17,7 @@ app = typer.Typer(
 app.add_typer(db.app, name="db", help="Database management")
 app.add_typer(server.app, name="server", help="Server management")
 app.add_typer(documents.app, name="doc", help="Document management (alternative to direct commands)")
+app.add_typer(kg.app, name="kg", help="Knowledge graph operations")
 
 # Add direct document commands at root level
 app.command(name="add")(documents.add)

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
 from .lifecycle import lifespan
-from .routes import search, documents, admin
+from .routes import search, documents, admin, kg
 
 # Create FastAPI app
 app = FastAPI(
@@ -23,6 +23,7 @@ app = FastAPI(
 app.include_router(search.router)
 app.include_router(documents.router)
 app.include_router(admin.router)
+app.include_router(kg.router)
 
 # Legacy endpoint for backwards compatibility
 @app.get("/status")

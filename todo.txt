@@ -5,24 +5,19 @@ These are items that we need TODO
 - Add auto metadata generator using GLiNER to keep memory requirements manageable for local deployment
 
 Generic Entity Type List for GLiNER:
-["person", "organization", "location", "software", "technology", "programming_language", "process", "event", "product", "metric", "date", "concept", "category", "issue", "solution"]
+["person", "organization", "location", "technology", "process", "event", "metric", "date", "concept", "issue"]
 
 Label,Category,Why it's useful for RAG
 person,Actor,Identifying key stakeholders or authors.
 organization,Actor,"Companies, institutions, or groups mentioned."
 location,Entity,Physical places (useful for spatial queries).
-software,Tech,"Tools, platforms, or libraries (critical for your user base)."
 technology,Tech,"Broader concepts like ""AI"", ""SQL"", ""Cloud Computing""."
-programming_language,Tech,"Specifically for code-heavy docs (Python, Java, etc.)."
 process,Action,"Methodologies or workflows (e.g., ""Agile"", ""Manufacturing"")."
 event,Action,"Meetings, incidents, releases, or historical moments."
-product,Object,Specific items or deliverables being discussed.
 metric,Data,"Quantitative measures (e.g., ""latency"", ""revenue"", ""accuracy"")."
 date,Time,Timestamps or eras (crucial for timeline reconstruction).
 concept,Abstract,High-level ideas that don't fit other categories.
-category,Abstract,Classification tags explicitly mentioned in text.
 issue,Risk,"Problems, bugs, or risks (e.g., ""memory leak"", ""inflation"")."
-solution,Outcome,"Fixes, patches, or resolutions described in text."
 
 - Add knowledge graph functionality using an entity relation many-to-many table
 
