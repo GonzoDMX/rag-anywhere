@@ -3,14 +3,50 @@
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.text import Text
 from typing import Optional
 import requests
+import re
 
 from ..context import RAGContext
 from ...server.manager import ServerManager
 
 app = typer.Typer()
 console = Console()
+
+
+def _highlight_marked_text(content: str) -> Text:
+    """
+    Convert content with <mark>...</mark> tags to Rich Text with highlighting.
+
+    Args:
+        content: Text content with <mark> tags
+
+    Returns:
+        Rich Text object with highlighted matches
+    """
+    # Pattern to match <mark>...</mark> tags
+    mark_pattern = re.compile(r'<mark>(.*?)</mark>', re.DOTALL)
+
+    result = Text()
+    last_end = 0
+
+    for match in mark_pattern.finditer(content):
+        # Add text before the match (normal style)
+        if match.start() > last_end:
+            result.append(content[last_end:match.start()])
+
+        # Add the matched text with yellow background and bold
+        matched_text = match.group(1)
+        result.append(matched_text, style="bold black on yellow")
+
+        last_end = match.end()
+
+    # Add any remaining text after the last match
+    if last_end < len(content):
+        result.append(content[last_end:])
+
+    return result
 
 
 def _perform_semantic_search(
@@ -198,7 +234,6 @@ def keyword(
     optional: Optional[str] = typer.Option(None, "--optional", "-o", help="Comma-separated optional keywords (at least one)"),
     exclude: Optional[str] = typer.Option(None, "--exclude", "-e", help="Comma-separated terms/keywords to exclude"),
     top_k: int = typer.Option(10, "--top-k", "-k", help="Number of results to return"),
-    highlight: bool = typer.Option(True, "--highlight/--no-highlight", help="Highlight matched terms"),
     exact_match: bool = typer.Option(False, "--exact-match", help="Treat query as exact phrase match (free-form mode only)"),
     show_metadata: bool = typer.Option(False, "--metadata", "-m", help="Show chunk metadata"),
 ):
@@ -283,7 +318,7 @@ def keyword(
             'query': query,
             'top_k': top_k,
             'exclude_terms': exclude_terms,
-            'highlight': highlight,
+            'highlight': True,
             'exact_match': exact_match
         }
     else:
@@ -309,7 +344,7 @@ def keyword(
             'optional_keywords': optional_keywords,
             'exclude_keywords': exclude_keywords,
             'top_k': top_k,
-            'highlight': highlight
+            'highlight': True
         }
 
     # Perform keyword search via API
@@ -363,9 +398,15 @@ def keyword(
 
         content = result['content']
 
+        # Highlight <mark> tags if present
+        if '<mark>' in content:
+            highlighted_content = _highlight_marked_text(content)
+        else:
+            highlighted_content = content
+
         # Create panel with content
         panel = Panel(
-            content,
+            highlighted_content,
             title=header,
             border_style="green",
             padding=(1, 2)
