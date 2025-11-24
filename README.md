@@ -1,20 +1,20 @@
 # RAG Anywhere
 
-Secure, portable, local-first RAG (Retrieval-Augmented Generation) system with configurable embedding models.
+Secure, portable, local-first RAG (Retrieval-Augmented Generation) system powered by EmbeddingGemma.
 
 ## Features
 
-- 🔒 **Secure**: Fully isolated, can run completely offline
+- 🔒 **Secure**: Fully isolated, runs completely offline with local embeddings
 - 🚀 **Fast**: One-command deployment, local vector search with FAISS
-- 📦 **Portable**: Multi-platform, minimal dependencies
-- 🎯 **Flexible**: Support for multiple embedding models (local and remote)
-- 🔧 **Configurable**: Per-database configuration, customizable text splitting
+- 📦 **Portable**: Multi-platform, minimal dependencies, no API keys required
+- 🎯 **Task-Optimized**: Specialized search modes for different use cases (code, Q&A, facts)
+- 🔧 **Configurable**: Customizable text splitting, document types, metadata
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.12 or higher
 - pip
 
 ### Quick Start
@@ -42,11 +42,8 @@ pip install -e ".[gpu]"
 # For development (includes testing tools)
 pip install -e ".[dev]"
 
-# For OpenAI embeddings
-pip install -e ".[openai]"
-
 # Install multiple extras
-pip install -e ".[gpu,dev,openai]"
+pip install -e ".[gpu,dev]"
 ```
 
 4. **Verify installation**:
@@ -119,6 +116,8 @@ rag-anywhere add document.pdf --splitter recursive --chunk-size 4000
 ```
 
 ### 3. Search
+
+#### Semantic Search (Default)
 ```bash
 # Basic search
 rag-anywhere search "your query here"
@@ -129,6 +128,71 @@ rag-anywhere search "query" --top-k 10 --min-score 0.7
 # Search with context
 rag-anywhere search "query" --context 2
 ```
+
+#### Keyword Search
+RAG Anywhere provides powerful keyword search using SQLite FTS5 with two modes:
+
+**Free-form Mode** (supports FTS5 query syntax):
+```bash
+# Simple query
+rag-anywhere search keyword "machine learning"
+
+# Boolean AND
+rag-anywhere search keyword "machine AND learning"
+
+# Boolean OR
+rag-anywhere search keyword "machine OR learning"
+
+# NOT operator
+rag-anywhere search keyword "machine NOT cat"
+
+# Phrase queries (exact match)
+rag-anywhere search keyword '"machine learning"'
+
+# Prefix matching
+rag-anywhere search keyword "mach*"
+
+# Exact match flag
+rag-anywhere search keyword "Google's" --exact-match
+
+# Exclude terms
+rag-anywhere search keyword "dog" --exclude "cat,bird"
+
+# More results
+rag-anywhere search keyword "machine" --top-k 20
+
+# Disable highlighting
+rag-anywhere search keyword "machine" --no-highlight
+```
+
+**Structured Mode** (explicit required/optional/exclude):
+```bash
+# Required keywords (all must be present - AND logic)
+rag-anywhere search keyword --required "machine,learning"
+
+# Optional keywords (at least one must be present - OR logic)
+rag-anywhere search keyword --optional "machine,learning,neural"
+
+# Combine required and optional
+rag-anywhere search keyword --required "learning" --optional "machine,deep,neural"
+
+# Exclude keywords
+rag-anywhere search keyword --required "dog" --exclude "cat,bird"
+
+# Full example
+rag-anywhere search keyword \
+  --required "machine,learning" \
+  --optional "neural,deep" \
+  --exclude "statistics" \
+  --top-k 15
+```
+
+**Tips:**
+- Free-form mode gives you more control with FTS5 syntax
+- Structured mode is simpler and less error-prone
+- Use `--highlight` (default) to see matched terms with `<mark>` tags
+- Keyword search is faster than semantic search for exact term matching
+- Combine with `--metadata` to see chunk metadata
 
 ### 4. Manage Documents
 ```bash
@@ -293,6 +357,150 @@ rag-anywhere db create my-db --model sentence-transformers/all-MiniLM-L6-v2
   rag-anywhere db create my-db --provider openai --model text-embedding-3-large
   ```
 
+## API Server
+
+RAG Anywhere includes a FastAPI-based REST API server for programmatic access.
+
+### Starting the Server
+
+```bash
+# Start server with default settings (port 8000)
+rag-anywhere server --db my-docs
+
+# Custom port
+rag-anywhere server --db my-docs --port 8080
+
+# Server management
+rag-anywhere server status   # Check server status
+rag-anywhere server stop     # Stop the server
+rag-anywhere server restart  # Restart the server
+```
+
+### API Endpoints
+
+#### Keyword Search (Unified)
+**Endpoint**: `POST /search/keyword`
+
+Supports both free-form and structured modes via automatic mode detection.
+
+**Free-form mode example**:
+```bash
+curl -X POST "http://localhost:8000/search/keyword" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "machine AND learning",
+    "top_k": 10,
+    "highlight": true,
+    "exact_match": false,
+    "exclude_terms": ["statistics"]
+  }'
+```
+
+**Structured mode example**:
+```bash
+curl -X POST "http://localhost:8000/search/keyword" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "required_keywords": ["machine", "learning"],
+    "optional_keywords": ["neural", "deep"],
+    "exclude_keywords": ["statistics"],
+    "top_k": 10,
+    "highlight": true
+  }'
+```
+
+**Request Parameters**:
+
+*Free-form mode*:
+- `query` (string, required): FTS5 query syntax
+- `exclude_terms` (array, optional): Terms to exclude
+- `exact_match` (boolean, optional): Treat as exact phrase
+- `top_k` (integer, optional): Number of results (default: 10)
+- `highlight` (boolean, optional): Highlight matches (default: false)
+
+*Structured mode*:
+- `required_keywords` (array, optional): All must be present (AND)
+- `optional_keywords` (array, optional): At least one present (OR)
+- `exclude_keywords` (array, optional): None present (NOT)
+- `top_k` (integer, optional): Number of results (default: 10)
+- `highlight` (boolean, optional): Highlight matches (default: false)
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "chunk_id": "doc-uuid_0",
+      "content": "Machine learning is...",
+      "score": 2.5,
+      "document": {
+        "id": "doc-uuid",
+        "filename": "ml-intro.txt"
+      },
+      "position": {
+        "chunk_index": 0,
+        "start_char": 0,
+        "end_char": 500
+      },
+      "metadata": {}
+    }
+  ],
+  "query": "machine AND learning"
+}
+```
+
+#### Semantic Search
+**Endpoint**: `POST /search`
+
+```bash
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "neural networks and deep learning",
+    "top_k": 5,
+    "min_score": 0.7
+  }'
+```
+
+#### Document Management
+
+**Add Document**: `POST /documents/add`
+```bash
+curl -X POST "http://localhost:8000/documents/add" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_path": "/path/to/document.pdf",
+    "metadata": {"category": "ml"}
+  }'
+```
+
+**List Documents**: `GET /documents/list`
+```bash
+curl "http://localhost:8000/documents/list"
+```
+
+**Remove Document**: `POST /documents/remove`
+```bash
+curl -X POST "http://localhost:8000/documents/remove" \
+  -H "Content-Type: application/json" \
+  -d '{"document_id": "doc-uuid"}'
+```
+
+**Batch Add**: `POST /documents/add-batch`
+```bash
+curl -X POST "http://localhost:8000/documents/add-batch" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "documents": [
+      {"file_path": "/path/to/doc1.pdf"},
+      {"file_path": "/path/to/doc2.txt"}
+    ],
+    "fail_fast": false
+  }'
+```
+
+For complete API documentation, start the server and visit `http://localhost:8000/docs` for the interactive Swagger UI.
+
 ## License
 
 ### Project License
@@ -316,9 +524,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [x] CLI interface
 - [x] Multiple embedding providers
 - [x] Configurable text splitting
-- [ ] API server (FastAPI)
-- [ ] Hybrid search (dense + sparse)
-- [ ] Knowledge graph integration
+- [x] API server (FastAPI)
+- [x] Keyword search (FTS5 with BM25 ranking)
+- [x] Hybrid search capabilities (semantic + keyword)
+- [x] Knowledge graph integration
 - [ ] Additional embedding providers
 - [ ] Code-aware splitters
 - [ ] Web UI

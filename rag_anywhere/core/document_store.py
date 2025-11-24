@@ -22,18 +22,26 @@ class DocumentStore:
         """Initialize database schema"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         # Documents table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS documents (
                 id TEXT PRIMARY KEY,
                 filename TEXT NOT NULL,
                 content TEXT NOT NULL,
+                doc_type TEXT DEFAULT 'text',
                 metadata TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Migration: Add doc_type column if it doesn't exist (for existing databases)
+        cursor.execute("PRAGMA table_info(documents)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if 'doc_type' not in columns:
+            cursor.execute("ALTER TABLE documents ADD COLUMN doc_type TEXT DEFAULT 'text'")
+
         
         # Chunks table
         cursor.execute("""
@@ -74,37 +82,39 @@ class DocumentStore:
         conn.close()
     
     def add_document(
-        self, 
-        filename: str, 
-        content: str, 
+        self,
+        filename: str,
+        content: str,
         chunks: List[TextChunk],
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        doc_type: str = "text"
     ) -> str:
         """
         Add a document and its chunks to the store
-        
+
         Args:
             filename: Document filename
             content: Full document content
             chunks: List of text chunks
             metadata: Optional document metadata
-            
+            doc_type: Document type ('text' or 'code')
+
         Returns:
             Document ID
         """
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         # Generate document ID
         doc_id = str(uuid.uuid4())
-        
+
         # Insert document
         cursor.execute(
             """
-            INSERT INTO documents (id, filename, content, metadata)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO documents (id, filename, content, doc_type, metadata)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (doc_id, filename, content, json.dumps(metadata or {}))
+            (doc_id, filename, content, doc_type, json.dumps(metadata or {}))
         )
         
         # Insert chunks
@@ -152,29 +162,30 @@ class DocumentStore:
         
         if row is None:
             return None
-        
+
         return {
             'id': row['id'],
             'filename': row['filename'],
             'content': row['content'],
+            'doc_type': row['doc_type'] if 'doc_type' in row.keys() else 'text',
             'metadata': json.loads(row['metadata']),
             'created_at': row['created_at'],
             'updated_at': row['updated_at']
         }
-    
+
     def get_document_by_filename(self, filename: str) -> Optional[Dict[str, Any]]:
         """Get document by filename"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         cursor.execute(
             "SELECT * FROM documents WHERE filename = ?",
             (filename,)
         )
         row = cursor.fetchone()
         conn.close()
-        
+
         if row is None:
             return None
         
@@ -182,18 +193,19 @@ class DocumentStore:
             'id': row['id'],
             'filename': row['filename'],
             'content': row['content'],
+            'doc_type': row['doc_type'] if 'doc_type' in row.keys() else 'text',
             'metadata': json.loads(row['metadata']),
             'created_at': row['created_at'],
             'updated_at': row['updated_at']
         }
-    
+
     def list_documents(self) -> List[Dict[str, Any]]:
         """List all documents"""
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
-        cursor.execute("SELECT id, filename, metadata, created_at FROM documents ORDER BY created_at DESC")
+
+        cursor.execute("SELECT id, filename, doc_type, metadata, created_at FROM documents ORDER BY created_at DESC")
         rows = cursor.fetchall()
         conn.close()
         
@@ -201,6 +213,7 @@ class DocumentStore:
             {
                 'id': row['id'],
                 'filename': row['filename'],
+                'doc_type': row['doc_type'] if 'doc_type' in row.keys() else 'text',
                 'metadata': json.loads(row['metadata']),
                 'created_at': row['created_at']
             }

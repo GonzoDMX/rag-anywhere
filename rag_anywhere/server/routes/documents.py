@@ -50,7 +50,11 @@ async def add_document(
             rag_context.safe_indexer.splitter = splitter
         
         # Index document
-        doc_id = rag_context.safe_indexer.index_document(file_path, request.metadata)
+        doc_id = rag_context.safe_indexer.index_document(
+            file_path,
+            request.metadata,
+            request.doc_type
+        )
         
         # Restore original splitter
         if original_splitter:
@@ -117,7 +121,11 @@ async def add_documents_batch(
                 rag_context.safe_indexer.splitter = splitter
 
             # Index document
-            doc_id = rag_context.safe_indexer.index_document(file_path, doc_item.metadata)
+            doc_id = rag_context.safe_indexer.index_document(
+                file_path,
+                doc_item.metadata,
+                doc_item.doc_type
+            )
 
             # Restore original splitter
             if original_splitter:
@@ -199,6 +207,7 @@ async def list_documents(
             doc_items.append(DocumentListItem(
                 id=doc['id'],
                 filename=doc['filename'],
+                doc_type=doc.get('doc_type', 'text'),
                 created_at=doc['created_at'],
                 metadata=doc['metadata'],
                 num_chunks=len(chunks)

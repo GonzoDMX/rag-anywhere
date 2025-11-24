@@ -16,7 +16,6 @@ app = typer.Typer(
 # Add command groups
 app.add_typer(db.app, name="db", help="Database management")
 app.add_typer(server.app, name="server", help="Server management")
-app.add_typer(documents.app, name="doc", help="Document management (alternative to direct commands)")
 app.add_typer(kg.app, name="kg", help="Knowledge graph operations")
 
 # Add direct document commands at root level
@@ -27,38 +26,29 @@ app.command(name="list")(documents.list_documents)
 # Add search as a command group
 app.add_typer(search.app, name="search", help="Search for documents")
 
-# Add info at root level
-app.command(name="info")(info.show_info)
+# Add status at root level
 app.command(name="status")(info.show_status)
 
 
 @app.callback()
 def callback(
-    debug: bool = typer.Option(
-        False,
-        "--debug",
-        help="Enable debug mode with verbose output"
-    ),
     verbose: bool = typer.Option(
         False,
         "-v",
         "--verbose",
-        help="Enable verbose output (same as --debug)"
+        help="Enable verbose output with debug logging"
     )
 ):
     """
     RAG Anywhere - Secure, portable, local-first RAG system
     """
-    # Set debug flag if either --debug or -v is used
-    is_debug = debug or verbose
-
-    # Store debug state in environment variable so all commands can access it
-    if is_debug:
+    # Store verbose state in environment variable so all commands can access it
+    if verbose:
         os.environ['RAG_ANYWHERE_DEBUG'] = '1'
 
     # Initialize logging globally
     config = Config()
-    setup_logging(config.config_dir, debug=is_debug)
+    setup_logging(config.config_dir, debug=verbose)
 
 
 def main():

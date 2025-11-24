@@ -13,7 +13,6 @@ from ..context import RAGContext
 from ...server.manager import ServerManager
 from ...core.loaders import LoaderRegistry
 
-app = typer.Typer()
 console = Console()
 
 
@@ -49,11 +48,11 @@ def _parse_splitter_overrides(
     return overrides
 
 
-@app.command()
 def add(
     ctx: typer.Context,
     paths: List[Path] = typer.Argument(..., help="File(s) or directory to add", exists=True),
     recursive: bool = typer.Option(False, "--recursive", "-r", help="Recursively add files from directories"),
+    doc_type: str = typer.Option("text", "--doc-type", "-t", help="Document type: 'text' (default) or 'code'"),
     metadata: Optional[str] = typer.Option(None, "--metadata", "-m", help="JSON metadata to attach to document(s)"),
     splitter: Optional[str] = typer.Option(None, "--splitter", "-s", help="Splitter strategy (recursive, structural)"),
     chunk_size: Optional[int] = typer.Option(None, "--chunk-size", help="Chunk size in characters (for recursive splitter)"),
@@ -62,6 +61,11 @@ def add(
     max_chunk_size: Optional[int] = typer.Option(None, "--max-chunk-size", help="Maximum chunk size (for structural splitter)"),
 ):
     """Add document(s) to the active database"""
+
+    # Validate doc_type
+    if doc_type not in ("text", "code"):
+        console.print(f"[red]✗[/red] Invalid doc-type: '{doc_type}'. Must be 'text' or 'code'", style="bold")
+        raise typer.Exit(1)
     rag_ctx = RAGContext()
     manager = ServerManager(rag_ctx.config)
     
@@ -132,6 +136,7 @@ def add(
     for file_path in files_to_add:
         documents_batch.append({
             'file_path': str(file_path.absolute()),
+            'doc_type': doc_type,
             'metadata': parsed_metadata,
             'splitter_overrides': splitter_overrides
         })
@@ -188,7 +193,6 @@ def add(
         raise typer.Exit(1)
 
 
-@app.command()
 def remove(
     identifier: str = typer.Argument(..., help="Document ID or filename to remove"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
@@ -295,7 +299,6 @@ def remove(
         raise typer.Exit(1)
 
 
-@app.command(name="list")
 def list_documents(
     filter_json: Optional[str] = typer.Option(None, "--filter", "-f", help="Filter by metadata keys (comma-separated) or key-value pairs (JSON)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show detailed information"),
@@ -303,6 +306,7 @@ def list_documents(
     order: str = typer.Option("desc", "--order", "-o", help="Sort order: asc or desc"),
     page: int = typer.Option(1, "--page", "-p", help="Page number (starts at 1)", min=1),
     per_page: int = typer.Option(20, "--per-page", help="Results per page", min=1, max=100),
+    count: bool = typer.Option(False, "--count", help="Show only the count of documents (respects filters)"),
 ):
     """List all documents in the active database"""
     rag_ctx = RAGContext()
@@ -435,6 +439,15 @@ def list_documents(
 
     if not documents:
         console.print("No documents in database")
+        return
+
+    # If count flag is set, show only the count and return
+    if count:
+        total_count = len(documents)
+        if filter_mode is not None:
+            console.print(f"Matching documents: {total_count}")
+        else:
+            console.print(f"Total documents: {total_count}")
         return
 
     # Sort documents

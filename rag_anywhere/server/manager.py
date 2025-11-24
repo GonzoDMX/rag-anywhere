@@ -77,11 +77,11 @@ class ServerManager:
             raise ValueError("No active database. Create or activate a database first.")
         
         logger.info(f"Starting server for database '{active_db}'")
-        
-        # Get embedding model for active database
-        db_config = self.config.load_database_config(active_db)
-        embedding_model = f"{db_config['embedding']['provider']}:{db_config['embedding']['model']}"
-        
+
+        # Get embedding model (now global)
+        from ..config.embedding_config import EMBEDDING_MODEL
+        embedding_model = EMBEDDING_MODEL
+
         # Setup log files
         stdout_log = self.log_dir / "server-stdout.log"
         stderr_log = self.log_dir / "server-stderr.log"
@@ -293,12 +293,13 @@ class ServerManager:
         # Get embedding models
         old_db = state_data.get('active_db')
         old_model = state_data.get('embedding_model')
-        
-        new_db_config = self.config.load_database_config(new_db_name)
-        new_model = f"{new_db_config['embedding']['provider']}:{new_db_config['embedding']['model']}"
-        
-        # Determine if we need to reload model
-        reload_model = (old_model != new_model)
+
+        # Embedding model is now global, so no need to reload
+        from ..config.embedding_config import EMBEDDING_MODEL
+        new_model = EMBEDDING_MODEL
+
+        # Since embedding model is global, we never need to reload it
+        reload_model = False
         
         logger.info(f"Switching database from '{old_db}' to '{new_db_name}' (reload_model={reload_model})")
         

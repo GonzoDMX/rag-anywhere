@@ -6,7 +6,7 @@ Tests all major API endpoints including:
 - Document management (add, list, remove)
 - Batch processing
 - Semantic search
-- Keyword search (simple and advanced)
+- Keyword search (free-form and structured modes)
 """
 
 import sys
@@ -221,12 +221,12 @@ class APITester:
             print_error(f"Failed: {response.status_code} - {response.text}")
             return False
 
-    def test_advanced_keyword_search(self):
-        """Test advanced keyword search"""
-        print_test("Advanced keyword search")
+    def test_structured_keyword_search(self):
+        """Test structured keyword search (unified endpoint)"""
+        print_test("Structured keyword search")
 
         response = requests.post(
-            f"{self.base_url}/search/keyword/advanced",
+            f"{self.base_url}/search/keyword",
             json={
                 "required_keywords": ["learning"],
                 "optional_keywords": ["machine", "deep"],
@@ -239,11 +239,48 @@ class APITester:
         if response.status_code == 200:
             data = response.json()
             result_count = len(data["results"])
-            print_success(f"Found {result_count} results")
+            print_success(f"Found {result_count} results (structured mode)")
             return result_count > 0
         else:
             print_error(f"Failed: {response.status_code} - {response.text}")
             return False
+
+    def test_keyword_search_validation(self):
+        """Test keyword search mode validation"""
+        print_test("Keyword search mode validation")
+
+        # Test 1: No query or keywords (should fail)
+        response = requests.post(
+            f"{self.base_url}/search/keyword",
+            json={
+                "top_k": 5
+            },
+            timeout=30
+        )
+
+        if response.status_code != 422:  # Pydantic validation error
+            print_error(f"Expected validation error (422), got: {response.status_code}")
+            return False
+
+        print_success("Correctly rejected request with no query or keywords")
+
+        # Test 2: Mixed mode (should fail)
+        response = requests.post(
+            f"{self.base_url}/search/keyword",
+            json={
+                "query": "machine learning",
+                "required_keywords": ["learning"],
+                "top_k": 5
+            },
+            timeout=30
+        )
+
+        if response.status_code != 422:  # Pydantic validation error
+            print_error(f"Expected validation error (422), got: {response.status_code}")
+            return False
+
+        print_success("Correctly rejected mixed mode request")
+        return True
 
     def test_remove_document(self):
         """Test document removal"""
@@ -309,9 +346,10 @@ class APITester:
             ("Batch Document Add", self.test_batch_document_add),
             ("List Documents", self.test_list_documents),
             ("Semantic Search", self.test_semantic_search),
-            ("Keyword Search", self.test_keyword_search),
+            ("Keyword Search (Free-form)", self.test_keyword_search),
             ("Keyword Search (Exact Match)", self.test_keyword_search_exact_match),
-            ("Advanced Keyword Search", self.test_advanced_keyword_search),
+            ("Keyword Search (Structured)", self.test_structured_keyword_search),
+            ("Keyword Search (Validation)", self.test_keyword_search_validation),
             ("Remove Document", self.test_remove_document),
         ]
 

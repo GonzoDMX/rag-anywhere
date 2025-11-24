@@ -21,77 +21,21 @@ console = Console()
 logger = get_logger('cli.db')
 
 
-def _validate_local_model_path(model_path: str) -> bool:
-    """
-    Validate that a local model path exists and contains required files.
-
-    Returns:
-        True if valid, False otherwise
-    """
-    path = Path(model_path).expanduser().resolve()
-
-    if not path.exists():
-        logger.error(f"Model path does not exist: {path}")
-        return False
-
-    if not path.is_dir():
-        logger.error(f"Model path is not a directory: {path}")
-        return False
-
-    # Check for essential model files
-    required_files = ['config.json']
-    has_model_file = False
-
-    for file in required_files:
-        if not (path / file).exists():
-            logger.error(f"Missing required file '{file}' in model directory: {path}")
-            return False
-
-    # Check for at least one model weight file
-    model_extensions = ['.bin', '.safetensors', '.pt', '.pth']
-    for ext in model_extensions:
-        if any(path.glob(f'*{ext}')):
-            has_model_file = True
-            break
-
-    if not has_model_file:
-        logger.error(f"No model weight files found in: {path}")
-        return False
-
-    logger.info(f"Local model path validated: {path}")
-    return True
-
-
-def _is_local_path(model: str) -> bool:
-    """Check if model string is a local path (relative or absolute)."""
-    return model.startswith(('.', '/', '~')) or Path(model).exists()
-
-
 @app.command()
 def create(
     name: str = typer.Argument(..., help="Database name"),
-    provider: str = typer.Option(
-        "embeddinggemma",
-        "--provider",
-        "-p",
-        help="Embedding provider: embeddinggemma (local) or openai (API)"
-    ),
-    model: Optional[str] = typer.Option(
-        None,
-        "--model",
-        "-m",
-        help="Model name or path. For embeddinggemma: HuggingFace model name or local path. For openai: model name (text-embedding-3-small, text-embedding-3-large)"
-    )
 ):
-    """Create a new database"""
+    """Create a new database with EmbeddingGemma (local embedding model)"""
+    from ...config.embedding_config import EMBEDDING_MODEL, EMBEDDING_DIMENSION, EMBEDDING_MAX_TOKENS
+
     ctx = RAGContext()
     manager = ServerManager(ctx.config)
-    
+
     # Check if database already exists
     if ctx.config.database_exists(name):
         console.print(f"[red]✗[/red] Database '{name}' already exists", style="bold")
         raise typer.Exit(1)
-    
+
     # Validate database name
     if not name.replace('-', '').replace('_', '').isalnum():
         console.print(
@@ -99,128 +43,50 @@ def create(
             style="bold"
         )
         raise typer.Exit(1)
-    
-    # Set default models
-    if model is None:
-        if provider == "embeddinggemma":
-            model = "google/embeddinggemma-300m"
-        elif provider == "openai":
-            model = "text-embedding-3-small"
-        else:
-            console.print(f"[red]✗[/red] Unknown provider: {provider}", style="bold")
-            raise typer.Exit(1)
-    
-    # Get model specifications
-    console.print(f"Creating database '{name}' with {provider}:{model}...")
+
+    console.print(f"Creating database '{name}'...")
+    console.print(f"  Embedding model: {EMBEDDING_MODEL}")
+    console.print(f"  Dimensions: {EMBEDDING_DIMENSION}")
+    console.print(f"  Max tokens: {EMBEDDING_MAX_TOKENS}")
 
     # Log system information for debugging
     logger.info(f"Creating database '{name}'")
     logger.info(f"Python version: {sys.version}")
     logger.info(f"Platform: {platform.platform()}")
     logger.info(f"Machine: {platform.machine()}")
-    logger.info(f"Provider: {provider}, Model: {model}")
-
-    # Initialize model_to_store (will be updated if local model is cached)
-    model_to_store = model
+    logger.info(f"Embedding model: {EMBEDDING_MODEL}")
 
     try:
-        if provider == "embeddinggemma":
-            logger.info("Validating EmbeddingGemma provider configuration...")
-
-            # Check dependencies are available (without importing heavy modules)
-            try:
-                import importlib.util
-                if importlib.util.find_spec("torch") is None:
-                    raise ImportError("torch not found")
-                if importlib.util.find_spec("sentence_transformers") is None:
-                    raise ImportError("sentence_transformers not found")
-            except ImportError as e:
-                logger.error(f"Missing required dependencies: {e}")
-                console.print(
-                    f"[red]✗[/red] Missing dependencies. Install with: pip install torch sentence-transformers",
-                    style="bold"
-                )
-                raise typer.Exit(1)
-
-            # Validate and cache model if needed
-            try:
-                # Check if it's a local path
-                if _is_local_path(model):
-                    logger.info(f"Validating local model path: {model}")
-                    if not _validate_local_model_path(model):
-                        console.print(
-                            f"[red]✗[/red] Invalid local model path: {model}",
-                            style="bold"
-                        )
-                        console.print("Ensure the directory contains config.json and model weight files")
-                        raise typer.Exit(1)
-
-                    console.print(f"[green]✓[/green] Local model validated: {model}")
-
-                    # Cache the local model
-                    console.print("Copying model to cache...")
-                    logger.info(f"Caching local model from {model}")
-                    cached_path = ctx.config.cache_local_model(model)
-                    model_to_store = cached_path
-                    logger.info(f"Model cached to: {cached_path}")
-                    console.print(f"[green]✓[/green] Model cached to: {cached_path}")
-                else:
-                    # For HuggingFace models, just check if it might be cached
-                    cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
-                    model_cache_name = f"models--{model.replace('/', '--')}"
-                    model_cached = (cache_dir / model_cache_name).exists()
-
-                    if model_cached:
-                        logger.info(f"Model '{model}' found in cache")
-                        console.print(f"[green]✓[/green] Model '{model}' found in cache")
-                    else:
-                        logger.info(f"Model '{model}' will be downloaded on first use (~1.2GB)")
-                        console.print(f"[yellow]ℹ[/yellow] Model '{model}' will be downloaded when server starts")
-
-                dimension = 768  # EmbeddingGemma dimension
-                max_tokens = 2048
-
-            except typer.Exit:
-                raise
-            except Exception as e:
-                logger.error(f"Failed to validate model: {type(e).__name__}: {e}", exc_info=True)
-                console.print(
-                    f"[red]✗[/red] Failed to validate embedding model",
-                    style="bold"
-                )
-                console.print(f"Error: {e}")
-                raise typer.Exit(1)
-            
-        elif provider == "openai":
-            logger.info("Initializing OpenAI provider...")
-
-            # Check for API key
-            if not os.environ.get('OPENAI_API_KEY'):
-                logger.error("OPENAI_API_KEY environment variable not set")
-                console.print(
-                    "[red]✗[/red] OpenAI provider requires OPENAI_API_KEY environment variable",
-                    style="bold"
-                )
-                raise typer.Exit(1)
-
-            dimension = 768
-            max_tokens = 8191
-            logger.info("OpenAI provider configured")
-
-        else:
-            logger.error(f"Unsupported provider: {provider}")
-            console.print(f"[red]✗[/red] Unsupported provider: {provider}", style="bold")
+        # Check dependencies are available (without importing heavy modules)
+        try:
+            import importlib.util
+            if importlib.util.find_spec("torch") is None:
+                raise ImportError("torch not found")
+            if importlib.util.find_spec("sentence_transformers") is None:
+                raise ImportError("sentence_transformers not found")
+        except ImportError as e:
+            logger.error(f"Missing required dependencies: {e}")
+            console.print(
+                f"[red]✗[/red] Missing dependencies. Install with: pip install torch sentence-transformers",
+                style="bold"
+            )
             raise typer.Exit(1)
+
+        # Check if model is cached
+        cache_dir = Path.home() / ".cache" / "huggingface" / "hub"
+        model_cache_name = f"models--{EMBEDDING_MODEL.replace('/', '--')}"
+        model_cached = (cache_dir / model_cache_name).exists()
+
+        if model_cached:
+            logger.info(f"Model '{EMBEDDING_MODEL}' found in cache")
+            console.print(f"[green]✓[/green] Model '{EMBEDDING_MODEL}' found in cache")
+        else:
+            logger.info(f"Model '{EMBEDDING_MODEL}' will be downloaded on first use (~1.2GB)")
+            console.print(f"[yellow]ℹ[/yellow] Model '{EMBEDDING_MODEL}' will be downloaded when server starts")
 
         # Create database config
         logger.info("Creating database configuration...")
-        db_config = ctx.config.create_database_config(
-            db_name=name,
-            embedding_provider=provider,
-            embedding_model=model_to_store,
-            embedding_dimension=dimension,
-            embedding_max_tokens=max_tokens
-        )
+        db_config = ctx.config.create_database_config(db_name=name)
 
         if not db_config:
             logger.error("Failed to create database configuration")
@@ -234,10 +100,6 @@ def create(
         ctx.config.set_active_database(name)
 
         console.print(f"[green]✓[/green] Created database '{name}'", style="bold")
-        console.print(f"  Provider: {provider}")
-        console.print(f"  Model: {model}")
-        console.print(f"  Dimensions: {dimension}")
-        console.print(f"  Max tokens: {max_tokens}")
 
         # Start server with new database
         console.print(f"\nStarting server for database '{name}'...")
@@ -369,11 +231,12 @@ def list():
     
     for db_name in sorted(db_names):
         try:
-            config = ctx.config.load_database_config(db_name)
-            provider = config['embedding']['provider']
-            model = config['embedding']['model']
+            from ...config.embedding_config import EMBEDDING_MODEL
+            # Embedding model is now global
+            provider = "embeddinggemma"
+            model = EMBEDDING_MODEL
             status = "ACTIVE" if db_name == active_db else ""
-            
+
             table.add_row(db_name, provider, model, status)
         except Exception:
             table.add_row(db_name, "ERROR", "ERROR", "")
@@ -402,8 +265,9 @@ def info(name: Optional[str] = typer.Argument(None, help="Database name (default
     db_path = ctx.config.get_database_db_path(name)
     
     # Get database statistics
+    from ...config.embedding_config import EMBEDDING_DIMENSION
     doc_store = DocumentStore(str(db_path))
-    vec_store = VectorStore(str(db_path), dimension=config['embedding']['dimension'])
+    vec_store = VectorStore(str(db_path), dimension=EMBEDDING_DIMENSION)
     
     documents = doc_store.list_documents()
     num_chunks = len(doc_store.get_all_chunk_ids())
@@ -419,10 +283,11 @@ def info(name: Optional[str] = typer.Argument(None, help="Database name (default
     console.print(f"[dim]{'─' * 60}[/dim]")
     
     console.print(f"\n[bold]Embedding Model:[/bold]")
-    console.print(f"  Provider: {config['embedding']['provider']}")
-    console.print(f"  Model: {config['embedding']['model']}")
-    console.print(f"  Dimensions: {config['embedding']['dimension']}")
-    console.print(f"  Max tokens: {config['embedding']['max_tokens']}")
+    from ...config.embedding_config import EMBEDDING_MODEL, EMBEDDING_DIMENSION, EMBEDDING_MAX_TOKENS
+    console.print(f"  Provider: embeddinggemma")
+    console.print(f"  Model: {EMBEDDING_MODEL}")
+    console.print(f"  Dimensions: {EMBEDDING_DIMENSION}")
+    console.print(f"  Max tokens: {EMBEDDING_MAX_TOKENS}")
     
     console.print(f"\n[bold]Content:[/bold]")
     console.print(f"  Documents: {len(documents)}")

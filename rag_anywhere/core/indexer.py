@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List
 
 from .loaders import LoaderRegistry
 from .splitters import SplitterFactory
-from .embeddings import EmbeddingProvider
+from .embeddings.providers.embedding_gemma import EmbeddingGemmaProvider
 from .document_store import DocumentStore
 from .vector_store import VectorStore
 from .keyword_search import KeywordSearcher
@@ -23,7 +23,7 @@ class Indexer:
         self,
         document_store: DocumentStore,
         vector_store: VectorStore,
-        embedding_provider: EmbeddingProvider,
+        embedding_provider: EmbeddingGemmaProvider,
         keyword_searcher: Optional[KeywordSearcher] = None,
         entity_store: Optional[EntityStore] = None,
         gliner_processor: Optional[GLiNERBatchProcessor] = None,
@@ -50,22 +50,24 @@ class Indexer:
         )
     
     def index_document(
-        self, 
-        file_path: Path, 
-        metadata: Optional[Dict[str, Any]] = None
+        self,
+        file_path: Path,
+        metadata: Optional[Dict[str, Any]] = None,
+        doc_type: str = "text"
     ) -> str:
         """
         Index a single document
-        
+
         Args:
             file_path: Path to document
             metadata: Optional additional metadata
-            
+            doc_type: Document type ('text' or 'code')
+
         Returns:
             Document ID
         """
         file_path = Path(file_path)
-        
+
         # Check if document already exists
         existing = self.document_store.get_document_by_filename(file_path.name)
         if existing:
@@ -73,15 +75,15 @@ class Indexer:
                 f"Document '{file_path.name}' already exists with ID {existing['id']}. "
                 "Please remove it first if you want to re-index."
             )
-        
+
         print(f"Loading document: {file_path.name}")
         # Load document
         content, file_metadata = self.loader_registry.load_document(file_path)
-        
+
         # Merge metadata
         if metadata:
             file_metadata.update(metadata)
-        
+
         print(f"Splitting document into chunks...")
         # Split into chunks
         chunks = self.splitter.split(content)
@@ -93,7 +95,8 @@ class Indexer:
             filename=file_path.name,
             content=content,
             chunks=chunks,
-            metadata=file_metadata
+            metadata=file_metadata,
+            doc_type=doc_type
         )
 
         # Track what we've indexed for rollback on failure
@@ -110,9 +113,17 @@ class Indexer:
                 chunk.metadata['chunk_index'] = i
 
             print(f"Generating embeddings for {len(chunks)} chunks...")
+            # Format chunks with EmbeddingGemma document prompt
+            # Title format: {filename}_{chunk_index}
+            formatted_chunks = [
+                self.embedding_provider.format_document_chunk(
+                    title=f"{file_path.stem}_{i}",
+                    content=chunk.content
+                )
+                for i, chunk in enumerate(chunks)
+            ]
             # Generate embeddings
-            chunk_texts = [chunk.content for chunk in chunks]
-            embeddings = self.embedding_provider.embed(chunk_texts)
+            embeddings = self.embedding_provider.embed(formatted_chunks)
 
             print(f"Storing vectors...")
             # Store vectors
@@ -192,56 +203,58 @@ class Indexer:
             raise e
     
     def index_directory(
-        self, 
+        self,
         directory_path: Path,
         recursive: bool = True,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        doc_type: str = "text"
     ) -> List[str]:
         """
         Index all documents in a directory
-        
+
         Args:
             directory_path: Path to directory
             recursive: Whether to search subdirectories
             metadata: Optional metadata to apply to all documents
-            
+            doc_type: Document type ('text' or 'code')
+
         Returns:
             List of document IDs
         """
         directory_path = Path(directory_path)
-        
+
         if not directory_path.is_dir():
             raise ValueError(f"Not a directory: {directory_path}")
-        
+
         # Get supported extensions
         supported_exts = set(self.loader_registry.get_supported_extensions())
-        
+
         # Find all supported files
         if recursive:
             files = [
-                f for f in directory_path.rglob('*') 
+                f for f in directory_path.rglob('*')
                 if f.is_file() and f.suffix.lower() in supported_exts
             ]
         else:
             files = [
-                f for f in directory_path.glob('*') 
+                f for f in directory_path.glob('*')
                 if f.is_file() and f.suffix.lower() in supported_exts
             ]
-        
+
         if not files:
             print(f"No supported documents found in {directory_path}")
             return []
-        
+
         print(f"Found {len(files)} documents to index")
-        
+
         doc_ids = []
         for file_path in files:
             try:
-                doc_id = self.index_document(file_path, metadata)
+                doc_id = self.index_document(file_path, metadata, doc_type)
                 doc_ids.append(doc_id)
             except Exception as e:
                 print(f"✗ Error indexing {file_path.name}: {e}")
-        
+
         print(f"\n✓ Successfully indexed {len(doc_ids)}/{len(files)} documents")
         return doc_ids
     

@@ -151,27 +151,23 @@ class Config:
     def create_database_config(
         self,
         db_name: str,
-        embedding_provider: str,
-        embedding_model: str,
-        embedding_dimension: int,
-        embedding_max_tokens: int,
         additional_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Create a new database configuration"""
+        """Create a new database configuration.
+
+        Note: Embedding configuration is now global (see rag_anywhere.config.embedding_config).
+        The version field tracks the embedding model version for future migration support.
+        """
+        from .embedding_config import EMBEDDING_VERSION
+
         db_dir = self.get_database_dir(db_name)
         db_dir.mkdir(parents=True, exist_ok=True)
-        
+
         config = {
             'database': {
                 'name': db_name,
                 'created_at': datetime.now().isoformat(),
-                'version': '0.1.0'
-            },
-            'embedding': {
-                'provider': embedding_provider,
-                'model': embedding_model,
-                'dimension': embedding_dimension,
-                'max_tokens': embedding_max_tokens
+                'version': EMBEDDING_VERSION  # Tracks embedding model version
             },
             'splitter': {
                 'defaults': self.DEFAULT_SPLITTER_CONFIG.copy()
@@ -181,7 +177,7 @@ class Config:
             },
             'gliner': self.DEFAULT_GLINER_CONFIG.copy()
         }
-        
+
         # Merge additional config
         if additional_config:
             for key, value in additional_config.items():
@@ -189,7 +185,7 @@ class Config:
                     config[key].update(value)
                 else:
                     config[key] = value
-        
+
         self._save_yaml(self.get_database_config_path(db_name), config)
         return config
     
@@ -199,6 +195,18 @@ class Config:
         if not config_path.exists():
             raise ValueError(f"Database '{db_name}' does not exist")
         return self._load_yaml(config_path)
+
+    def is_legacy_database(self, db_name: str) -> bool:
+        """Check if database uses legacy embedding configuration.
+
+        Returns True if the database config contains an 'embedding' section,
+        which indicates it was created before the global embedding model refactor.
+        """
+        try:
+            config = self.load_database_config(db_name)
+            return 'embedding' in config
+        except (ValueError, FileNotFoundError):
+            return False
     
     def save_database_config(self, db_name: str, config: Dict[str, Any]):
         """Save database configuration"""

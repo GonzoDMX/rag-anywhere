@@ -1,8 +1,8 @@
 # rag_anywhere/core/searcher.py
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
 
-from .embeddings import EmbeddingProvider
+from .embeddings.providers.embedding_gemma import EmbeddingGemmaProvider, TaskType
 from .vector_store import VectorStore
 from .document_store import DocumentStore
 
@@ -59,43 +59,44 @@ class SearchResult:
 
 class Searcher:
     """
-    Handles search queries and retrieval
+    Handles search queries and retrieval with task-specific embeddings
     """
-    
+
     def __init__(
         self,
         document_store: DocumentStore,
         vector_store: VectorStore,
-        embedding_provider: EmbeddingProvider
+        embedding_provider: EmbeddingGemmaProvider
     ):
         self.document_store = document_store
         self.vector_store = vector_store
         self.embedding_provider = embedding_provider
-    
+
     def search(
         self,
         query: str,
         top_k: int = 5,
-        min_score: Optional[float] = None
+        min_score: Optional[float] = None,
+        task: TaskType = "retrieval"
     ) -> List[SearchResult]:
         """
-        Search for relevant chunks
-        
+        Search for relevant chunks using task-specific query embedding
+
         Args:
             query: Search query
             top_k: Number of results to return
             min_score: Minimum similarity score (0-1)
-            
+            task: Task type for query embedding (retrieval, fact_checking, code_retrieval, etc.)
+
         Returns:
             List of SearchResult objects
         """
         if self.vector_store.count() == 0:
             print("No documents in the index")
             return []
-        
-        # Generate query embedding
-        # Providers may override embed_query for better query-document matching
-        query_vector = self.embedding_provider.embed_query(query)
+
+        # Generate task-specific query embedding
+        query_vector = self.embedding_provider.embed_query(query, task=task)
         
         # Search vector store
         raw_results = self.vector_store.search(query_vector, k=top_k)

@@ -1,16 +1,8 @@
 # rag_anywhere/core/embeddings/__init__.py
-"""Embedding subsystem"""
+"""Embedding subsystem - EmbeddingGemma only"""
 
-from .base import EmbeddingProvider
-from .factory import EmbeddingProviderFactory
-from .providers import (
-    EmbeddingGemmaProvider,
-    OpenAIEmbeddingProvider,
-)
+from .providers.embedding_gemma import EmbeddingGemmaProvider
 
 __all__ = [
-    'EmbeddingProvider',
-    'EmbeddingProviderFactory',
     'EmbeddingGemmaProvider',
-    'OpenAIEmbeddingProvider',
 ]

@@ -2,9 +2,7 @@
 """Embedding provider implementations"""
 
 from .embedding_gemma import EmbeddingGemmaProvider
-from .openai import OpenAIEmbeddingProvider
 
 __all__ = [
     'EmbeddingGemmaProvider',
-    'OpenAIEmbeddingProvider',
 ]

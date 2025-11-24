@@ -4,30 +4,12 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .db import info as db_info_cmd
 from ..context import RAGContext
 from ...server.manager import ServerManager
 from ...server.state import ServerStatus
 
 app = typer.Typer()
 console = Console()
-
-
-@app.command()
-def show_info():
-    """Show information about the active database"""
-    rag_ctx = RAGContext()
-    
-    try:
-        rag_ctx.ensure_active_database()
-    except ValueError as e:
-        console.print(f"[red]✗[/red] {e}", style="bold")
-        raise typer.Exit(1)
-    
-    db_name = rag_ctx.get_active_database_name()
-    
-    # This will call the db info command
-    db_info_cmd(db_name)
 
 
 @app.command()
@@ -77,8 +59,9 @@ def show_status():
 
         for db_name in sorted(databases):
             try:
-                config = rag_ctx.config.load_database_config(db_name)
-                provider = config['embedding']['provider']
+                from ...config.embedding_config import EMBEDDING_MODEL
+                # Embedding model is now global
+                provider = EMBEDDING_MODEL
                 status = "[green]ACTIVE[/green]" if db_name == active_db else ""
                 table.add_row(db_name, provider, status)
             except Exception:
