@@ -1,5 +1,0 @@
-These are items that we need TODO
-
-- Add more loaders and splitters to improve and expand file compatibility
-- Add CLI management commands for cached local models
-- Improve and automate server management

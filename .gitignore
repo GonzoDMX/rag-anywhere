@@ -1,6 +1,8 @@
 # .gitignore
 
 CLAUDE.md
+.github/
+legacy/
 
 # Python
 __pycache__/
