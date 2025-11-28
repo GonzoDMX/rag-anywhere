@@ -5,15 +5,22 @@ package models
 // ==========================================
 
 type WorkerEmbedRequest struct {
-	// We use a slice to allow batching (e.g. processing 10 chunks at once)
+	// Required: We use a slice to allow batching (e.g. processing 10 chunks at once)
 	Texts []string `json:"texts"`
+
+	// Required: Task Optimized embeddings (Gemma format: "task: {Task} | query: {Text}")
+	// Valid values: "retrieval_document",  -- For documents to be stored in vector DB
+	// 				 "retrieval_query",		-- For user queries
+	// 				 "question_answering",  -- Retrieve anwers for singular questions
+	// 				 "fact_verification",   -- Verify facts against the vector DB corpus
+	// 				 "classification",	    -- For text classification tasks
+	// 				 "clustering",		    -- For clustering tasks
+	// 				 "semantic_similarity", -- For sentence similarity tasks
+	// 				 "code_retrieval"       -- Improved code retrieval for natural language prompts
+	TaskType string `json:"task_type"`
 
 	// Optional: For document embedding (Gemma format: "title: {Title} | text: {Text}")
 	Title string `json:"title,omitempty"`
-
-	// Optional: For query embedding (Gemma format: "task: {Task} | query: {Text}")
-	// Valid values: "retrieval", "question_answering", "fact_checking", "code_retrieval"
-	TaskType string `json:"task_type,omitempty"`
 }
 
 type WorkerEmbedResponse struct {
