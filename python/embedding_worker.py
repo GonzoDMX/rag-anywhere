@@ -25,15 +25,16 @@ logger = logging.getLogger()
 MODEL_ID = "onnx-community/embeddinggemma-300m-ONNX"
 MAX_LENGTH = 2048 # Gemma 300m supports up to 2048 tokens
 
-# Task Definitions
+# Task definitions specific to EmbeddingGemma
 TASK_PROMPTS = {
-    "retrieval": "search result",
-    "question_answering": "question answering",
-    "fact_checking": "fact checking",
-    "classification": "classification",
-    "clustering": "clustering",
-    "similarity": "sentence similarity",
-    "code_retrieval": "code retrieval",
+    "retrieval_document": "none",
+    "retrieval_query": "search result",           # Optimized for document retrieval queries
+    "question_answering": "question answering",   # Optimized for QA tasks
+    "fact_verification": "fact checking",         # Optimized to verify factual claims against provided evidence
+    "classification": "classification",           # Optimized to classify texts according to preset labels
+    "clustering": "clustering",                   # Optimized to cluster texts based on their similarities
+    "semantic_similarity": "sentence similarity", # Optimized to assess text similarity. Not intended for retrieval use cases.
+    "code_retrieval": "code retrieval",           # Optimized for retrieving code snippets based on natural language queries
 }
 
 class ONNXEmbedder:
@@ -105,12 +106,20 @@ class ONNXEmbedder:
         return v / np.linalg.norm(v, axis=1, keepdims=True)
 
 def format_text(text: str, title: Optional[str] = None, task_type: Optional[str] = None) -> str:
+    """Applies EmbeddingGemma specific formatting rules"""
+    
+    # CASE 1: Document Retrieval Mode
+    if task_type == "retrieval_document":
+        title_str = title if title else "none"
+        return f"title: {title_str} | text: {text}"
+
+    # CASE 2: Optimized Task Retrieval Mode
     if task_type:
-        prompt = TASK_PROMPTS.get(task_type, "search result")
-        return f"task: {prompt} | query: {text}"
-    if title:
-        return f"title: {title} | text: {text}"
-    return f"title: none | text: {text}"
+        header = TASK_PROMPTS.get(task_type, "search result")
+        return f"task: {header} | query: {text}"
+    
+    # Default fallback (just the text)
+    return text
 
 def main():
     try:

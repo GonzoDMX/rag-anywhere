@@ -3,7 +3,8 @@
 
 # Vector operations and search
 numpy>=2.3.0
-sentence-transformers>=5.1.2
+huggingface_hub>=1.1.6
+onnxruntime>=1.23.2
 transformers>=4.48.0
 accelerate>=1.2.1
 gliner>=0.2.22
